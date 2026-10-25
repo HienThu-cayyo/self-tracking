@@ -1,0 +1,10 @@
+{
+  "workspaces": {
+    "apps/web": {
+      // Shared UI modules and entity barrels are intentionally public for future features.
+      "entry": ["src/_shared/ui/*.tsx", "src/_entities/*/index.server.ts"],
+      // Zod is a documented app-level schema standard, even before a product adds schemas.
+      "ignoreDependencies": ["zod"],
+    },
+  },
+}

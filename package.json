@@ -1,0 +1,29 @@
+{
+  "name": "smart-base",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @smart-base/web dev",
+    "build": "pnpm --filter @smart-base/web build",
+    "start": "pnpm --filter @smart-base/web start",
+    "lint": "turbo run lint",
+    "knip": "knip --no-progress",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.11",
+    "knip": "^6.43.0",
+    "prettier": "3.9.10",
+    "turbo": "2.11.5"
+  }
+}

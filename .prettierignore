@@ -1,0 +1,15 @@
+pnpm-lock.yaml
+**/next-env.d.ts
+drizzle/meta/
+node_modules/
+.next/
+.turbo/
+.vercel/
+.wrangler/
+build/
+dist/
+out/
+coverage/
+playwright-report/
+test-results/
+.superpowers/
