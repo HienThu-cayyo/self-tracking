@@ -4,6 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -50,6 +52,8 @@
 
 :root {
   color-scheme: light;
+  --brand: #f9a8bb;
+  --brand-foreground: #7d2945;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -88,6 +92,8 @@
 
 .dark {
   color-scheme: dark;
+  --brand: #f9a8bb;
+  --brand-foreground: #5f1f37;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -130,5 +136,95 @@
 
   body {
     @apply min-h-dvh bg-background text-foreground antialiased;
+  }
+}
+
+@layer utilities {
+  /* Keep the existing utility vocabulary while applying the new brand color. */
+  .bg-violet-50 {
+    background-color: color-mix(in srgb, var(--brand) 22%, white) !important;
+  }
+
+  .bg-violet-100 {
+    background-color: color-mix(in srgb, var(--brand) 48%, white) !important;
+  }
+
+  .bg-violet-200 {
+    background-color: color-mix(in srgb, var(--brand) 68%, white) !important;
+  }
+
+  .bg-violet-500,
+  .bg-violet-600 {
+    background-color: var(--brand) !important;
+  }
+
+  .bg-violet-700 {
+    background-color: color-mix(in srgb, var(--brand) 78%, #8b3150) !important;
+  }
+
+  .text-violet-300,
+  .text-violet-400,
+  .text-violet-500,
+  .text-violet-600,
+  .text-violet-700 {
+    color: var(--brand-foreground) !important;
+  }
+
+  .border-violet-200,
+  .border-violet-300,
+  .border-violet-400 {
+    border-color: color-mix(in srgb, var(--brand) 72%, transparent) !important;
+  }
+
+  .ring-violet-400,
+  .ring-violet-500 {
+    --tw-ring-color: var(--brand) !important;
+  }
+
+  .from-indigo-500 {
+    --tw-gradient-from: var(--brand) var(--tw-gradient-from-position) !important;
+    --tw-gradient-to: color-mix(in srgb, var(--brand) 0%, transparent)
+      var(--tw-gradient-to-position) !important;
+  }
+
+  .to-violet-600 {
+    --tw-gradient-to: var(--brand) var(--tw-gradient-to-position) !important;
+  }
+
+  /* Dark mode uses a translucent pink surface instead of bright purple. */
+  .dark .text-violet-300,
+  .dark .text-violet-400,
+  .dark .text-violet-500,
+  .dark .text-violet-600,
+  .dark .text-violet-700,
+  .dark [class~="dark:text-violet-300"],
+  .dark [class~="dark:text-violet-600"] {
+    color: var(--brand) !important;
+  }
+
+  .dark [class~="dark:bg-violet-500/5"] {
+    background-color: rgb(249 168 187 / 0.05) !important;
+  }
+
+  .dark [class~="dark:bg-violet-500/10"] {
+    background-color: rgb(249 168 187 / 0.1) !important;
+  }
+
+  .dark [class~="dark:bg-violet-500/12"] {
+    background-color: rgb(249 168 187 / 0.12) !important;
+  }
+
+  .dark [class~="dark:bg-violet-500/20"] {
+    background-color: rgb(249 168 187 / 0.2) !important;
+  }
+
+  .dark [class~="dark:border-violet-500/15"],
+  .dark [class~="dark:border-violet-500/20"] {
+    border-color: rgb(249 168 187 / 0.22) !important;
+  }
+
+  .dark [class~="dark:hover:bg-violet-500/5"]:hover,
+  .dark [class~="dark:hover:bg-violet-500/10"]:hover {
+    background-color: rgb(249 168 187 / 0.12) !important;
   }
 }

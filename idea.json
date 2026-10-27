@@ -1,0 +1,70 @@
+{
+  "format": "smart-idea-export",
+  "schemaVersion": 2,
+  "exportedAt": "2026-10-25T13:20:19.882Z",
+  "idea": {
+    "id": "aad55b7d-5384-401f-a072-6e87a479837b",
+    "name": "Self- Tracking",
+    "status": "new",
+    "description": "Self-Tracking là ứng dụng web dành cho sinh viên và người học muốn quản lý việc học, lịch trình và mục tiêu cá nhân tại một nơi. Ứng dụng giúp theo dõi môn học và tiến độ từng nội dung, tín chỉ, GPA, lộ trình IELTS hoặc lập trình, cùng danh sách việc cần làm và các kế hoạch cá nhân như tập gym hay duy trì thói quen. Qua đó, người dùng có thể biết mình đã hoàn thành đến đâu và dễ xác định việc cần ưu tiên tiếp theo.",
+    "industry": "Education",
+    "problem": "Người học có thể khó theo dõi mình đã học đến đâu và còn nội dung nào chưa hoàn thành khi một môn được chia thành nhiều phần theo mục lục. Tình trạng này thường trở nên đáng chú ý trong quá trình học, khi thông tin về tín chỉ, tiến độ ôn luyện và việc cần làm nằm rải rác, khiến họ khó đánh giá tình hình và chọn bước tiếp theo. Khi kỳ thi đến gần hoặc phát sinh việc gấp, việc không nắm rõ phần cần ôn và việc cần xử lý trước có thể khiến việc sắp xếp ưu tiên trở nên khó khăn hơn.",
+    "targetCustomer": "Sinh viên và người học muốn quản lý việc học, lịch trình và mục tiêu cá nhân tại một nơi là nhóm khách hàng ưu tiên. Ứng dụng có thể hữu ích trong quá trình theo dõi môn học, tín chỉ, GPA, lộ trình IELTS hoặc lập trình, cũng như khi cần sắp xếp việc cần làm trước kỳ thi hoặc lúc phát sinh việc gấp. Người dùng trực tiếp có thể đồng thời là người trả tiền nếu ứng dụng cung cấp gói trả phí.",
+    "solution": "Ứng dụng đề xuất tập trung việc học, lịch trình và mục tiêu cá nhân tại một nơi. Người học có thể theo dõi môn học và tiến độ từng nội dung, tín chỉ, GPA, lộ trình IELTS hoặc lập trình, cùng danh sách việc cần làm và kế hoạch cá nhân như tập gym hay duy trì thói quen. Nhờ đó, họ dễ nhận biết phần đã hoàn thành, phần còn lại và việc nên ưu tiên tiếp theo, đặc biệt khi kỳ thi đến gần hoặc phát sinh việc gấp.",
+    "revenueModels": [
+      "Gói miễn phí cơ bản, kèm gói đăng ký trả phí với tính năng nâng cao về theo dõi tiến độ học tập, mục tiêu và kế hoạch cá nhân.",
+      "Bán gói dành cho trường học hoặc tổ chức giáo dục muốn cung cấp công cụ theo dõi học tập cho người học.",
+      "Tiếp thị liên kết với các dịch vụ hoặc tài nguyên học tập phù hợp, nếu được triển khai minh bạch và có sự đồng ý của người dùng."
+    ],
+    "createdAt": "2026-10-25T13:15:34.182Z",
+    "updatedAt": "2026-10-25T13:15:34.182Z"
+  },
+  "features": [
+    {
+      "id": "66dd9da3-2718-4bd4-b253-1c1c32d6bc95",
+      "name": "Danh sách việc cần làm và lịch trình",
+      "description": "Quản lý nhiệm vụ học tập, lịch học và kế hoạch cá nhân như tập luyện hoặc duy trì thói quen, với trạng thái hoàn thành.",
+      "createdAt": "2026-10-25T13:17:48.486Z",
+      "updatedAt": "2026-10-25T13:17:48.486Z"
+    },
+    {
+      "id": "e2b213b4-2a3c-4d57-9fcf-4bf3ea95acb1",
+      "name": "Lộ trình học tập cá nhân",
+      "description": "Tạo và theo dõi lộ trình cho các mục tiêu như IELTS hoặc lập trình, chia thành các mốc học tập cụ thể.",
+      "createdAt": "2026-10-25T13:17:48.486Z",
+      "updatedAt": "2026-10-25T13:17:48.486Z"
+    },
+    {
+      "id": "ff3a3dda-2e14-4d33-b616-1e9fa4af35c8",
+      "name": "Quản lý tín chỉ và GPA",
+      "description": "Ghi nhận tín chỉ, điểm số theo môn và tính GPA tích lũy để người học theo dõi kết quả học tập.",
+      "createdAt": "2026-10-25T13:17:48.486Z",
+      "updatedAt": "2026-10-25T13:17:48.486Z"
+    },
+    {
+      "id": "8b8337db-f6f1-4b91-a467-13dfb65849d1",
+      "name": "Theo dõi tiến độ môn học và nội dung",
+      "description": "Cho phép tạo môn học, chia thành các chương hoặc mục lục, đánh dấu phần đã học và xem phần còn lại để biết tiến độ tổng thể.",
+      "createdAt": "2026-10-25T13:17:48.486Z",
+      "updatedAt": "2026-10-25T13:17:48.486Z"
+    },
+    {
+      "id": "eee6f773-ebd8-41d6-bccf-2ae7d4324716",
+      "name": "Ưu tiên công việc theo kỳ thi và mức độ gấp",
+      "description": "Giúp người dùng xác định việc học hoặc nhiệm vụ cần xử lý trước dựa trên kỳ thi sắp tới và các việc phát sinh gấp.",
+      "createdAt": "2026-10-25T13:17:48.486Z",
+      "updatedAt": "2026-10-25T13:17:48.486Z"
+    },
+    {
+      "id": "bbf1e141-f26d-4205-b86f-e32374a9cbc8",
+      "name": "Theo dõi deadline và nhắc việc",
+      "description": "Cho phép người học ghi lại deadline và việc cần làm, đồng thời theo dõi tiến độ hoàn thành để nhận biết việc nào còn tồn đọng và cần ưu tiên.",
+      "createdAt": "2026-10-25T13:20:02.951Z",
+      "updatedAt": "2026-10-25T13:20:02.951Z"
+    }
+  ],
+  "competitors": [],
+  "marketDiscovery": {
+    "savedOpportunities": []
+  }
+}
