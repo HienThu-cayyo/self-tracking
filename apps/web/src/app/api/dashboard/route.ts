@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto"
 import { getCurrentUser } from "@/_entities/auth/index.server"
 import {
   and,
+  calendarEvents,
   eq,
   getDb,
   lessons,
@@ -12,29 +13,44 @@ import {
   users,
 } from "@smart-base/database/server"
 
+function parseDeadline(value: unknown) {
+  if (value === null || value === "" || value === undefined) return null
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined
+  const date = new Date(`${value}T00:00:00Z`)
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value
+    ? undefined
+    : value
+}
+
 export async function GET() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
   const db = getDb()
-  const [allTasks, userTasks, userRoadmaps, userSubjects, userLessons] = await Promise.all([
-    db.select().from(tasks).where(eq(tasks.userId, user.id)),
-    db
-      .select()
-      .from(tasks)
-      .where(and(eq(tasks.userId, user.id), eq(tasks.done, false))),
-    db.select().from(roadmaps).where(eq(roadmaps.userId, user.id)),
-    db.select().from(subjects).where(eq(subjects.userId, user.id)),
-    db
-      .select({
-        id: lessons.id,
-        roadmapId: lessons.roadmapId,
-        title: lessons.title,
-        done: lessons.done,
-      })
-      .from(lessons)
-      .innerJoin(roadmaps, eq(roadmaps.id, lessons.roadmapId))
-      .where(eq(roadmaps.userId, user.id)),
-  ])
+  const [allTasks, userTasks, userRoadmaps, userSubjects, userLessons, userEvents] =
+    await Promise.all([
+      db.select().from(tasks).where(eq(tasks.userId, user.id)),
+      db
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.userId, user.id), eq(tasks.done, false))),
+      db.select().from(roadmaps).where(eq(roadmaps.userId, user.id)),
+      db.select().from(subjects).where(eq(subjects.userId, user.id)),
+      db
+        .select({
+          id: lessons.id,
+          roadmapId: lessons.roadmapId,
+          title: lessons.title,
+          done: lessons.done,
+        })
+        .from(lessons)
+        .innerJoin(roadmaps, eq(roadmaps.id, lessons.roadmapId))
+        .where(eq(roadmaps.userId, user.id)),
+      db
+        .select()
+        .from(calendarEvents)
+        .where(eq(calendarEvents.userId, user.id))
+        .orderBy(calendarEvents.startsAt),
+    ])
   const totalTasks = allTasks.length
   const completedTasks = allTasks.filter((task) => task.done).length
   const totalCredits = userSubjects.reduce((total, subject) => total + subject.credits, 0)
@@ -54,6 +70,7 @@ export async function GET() {
       lessons: userLessons.filter((lesson) => lesson.roadmapId === roadmap.id),
     })),
     subjects: userSubjects,
+    events: userEvents,
     summary: {
       learningProgressPercent,
       completedTasks,
@@ -77,6 +94,7 @@ export async function POST(request: Request) {
     priority?: unknown
     goal?: unknown
     progress?: unknown
+    deadline?: unknown
     roadmapId?: unknown
     titles?: unknown
     lessonId?: unknown
@@ -141,6 +159,10 @@ export async function POST(request: Request) {
   if (body.action === "create-course") {
     const title = String(body.title ?? "").trim()
     if (!title) return NextResponse.json({ message: "Tên lộ trình là bắt buộc" }, { status: 400 })
+    const deadline = parseDeadline(body.deadline)
+    if (body.deadline && deadline === undefined) {
+      return NextResponse.json({ message: "Ngày đích không hợp lệ" }, { status: 400 })
+    }
     const course = (
       await db
         .insert(roadmaps)
@@ -149,12 +171,28 @@ export async function POST(request: Request) {
           userId: user.id,
           title,
           goal: String(body.goal ?? "Lộ trình mới"),
-          progress: Number(body.progress ?? 0),
+          deadline: deadline ?? null,
+          progress: 0,
           featured: false,
         })
         .returning()
     )[0]
     return NextResponse.json({ course }, { status: 201 })
+  }
+  if (body.action === "update-roadmap-deadline") {
+    const roadmapId = String(body.roadmapId ?? "")
+    const deadline = parseDeadline(body.deadline)
+    if (body.deadline && deadline === undefined) {
+      return NextResponse.json({ message: "Ngày đích không hợp lệ" }, { status: 400 })
+    }
+    const updated = await db
+      .update(roadmaps)
+      .set({ deadline: deadline ?? null, updatedAt: new Date() })
+      .where(and(eq(roadmaps.id, roadmapId), eq(roadmaps.userId, user.id)))
+      .returning({ id: roadmaps.id, deadline: roadmaps.deadline })
+    if (!updated[0])
+      return NextResponse.json({ message: "Lộ trình không tồn tại" }, { status: 404 })
+    return NextResponse.json({ roadmap: updated[0] })
   }
   if (body.action === "add-lessons") {
     const roadmapId = String(body.roadmapId ?? "")
@@ -169,13 +207,14 @@ export async function POST(request: Request) {
       ? body.titles
           .map(String)
           .map((title) => title.trim())
-          .filter(Boolean)
+          .filter((title) => title.length > 0 && title.length <= 240)
       : []
-    if (!roadmap || !titles.length)
+    const uniqueTitles = [...new Set(titles)]
+    if (!roadmap || !uniqueTitles.length || uniqueTitles.length > 200)
       return NextResponse.json({ message: "Lộ trình hoặc bài học không hợp lệ" }, { status: 400 })
     await db
       .insert(lessons)
-      .values(titles.map((title) => ({ id: randomUUID(), roadmapId, title, done: false })))
+      .values(uniqueTitles.map((title) => ({ id: randomUUID(), roadmapId, title, done: false })))
     return NextResponse.json({ ok: true })
   }
   if (body.action === "toggle-lesson") {
@@ -193,6 +232,19 @@ export async function POST(request: Request) {
       .update(lessons)
       .set({ done: !lesson.done, updatedAt: new Date() })
       .where(eq(lessons.id, lesson.id))
+    const roadmapLessons = await db
+      .select({ done: lessons.done })
+      .from(lessons)
+      .where(eq(lessons.roadmapId, lesson.roadmapId))
+    const progress = roadmapLessons.length
+      ? Math.round(
+          (roadmapLessons.filter((item) => item.done).length / roadmapLessons.length) * 100,
+        )
+      : 0
+    await db
+      .update(roadmaps)
+      .set({ progress, updatedAt: new Date() })
+      .where(and(eq(roadmaps.id, lesson.roadmapId), eq(roadmaps.userId, user.id)))
     return NextResponse.json({ ok: true })
   }
   if (body.action === "create-subject") {

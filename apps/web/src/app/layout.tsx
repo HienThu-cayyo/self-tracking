@@ -6,7 +6,7 @@ import { AppProviders } from "@/_app/providers"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "self.track — Quản lý việc học và mục tiêu",
+  title: "Self-Track — Quản lý việc học và mục tiêu",
   description: "Theo dõi tiến độ học tập, deadline và mục tiêu cá nhân tại một nơi.",
 }
 

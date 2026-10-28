@@ -1,4 +1,14 @@
-import { boolean, integer, jsonb, pgTable, real, text, timestamp } from "drizzle-orm/pg-core"
+import {
+  boolean,
+  date,
+  integer,
+  jsonb,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core"
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -63,6 +73,7 @@ export const roadmaps = pgTable("roadmaps", {
     .references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   goal: text("goal").notNull(),
+  deadline: date("deadline", { mode: "string" }),
   progress: integer("progress").default(0).notNull(),
   featured: boolean("featured").default(false).notNull(),
   ...timestamps,
@@ -91,14 +102,47 @@ export const subjects = pgTable("subjects", {
   ...timestamps,
 })
 
-export const calendarEvents = pgTable("calendar_events", {
-  id: text("id").primaryKey(),
+export const calendarEvents = pgTable(
+  "calendar_events",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    allDay: boolean("all_day").default(false).notNull(),
+    location: text("location"),
+    description: text("description"),
+    eventType: text("event_type").default("personal").notNull(),
+    reminderMinutes: integer("reminder_minutes").default(30).notNull(),
+    source: text("source").default("local").notNull(),
+    externalId: text("external_id"),
+    sourceCalendarId: text("source_calendar_id"),
+    metadata: jsonb("metadata"),
+    ...timestamps,
+  },
+  (table) => ({
+    externalEvent: unique("calendar_events_source_external_unique").on(
+      table.source,
+      table.externalId,
+    ),
+  }),
+)
+
+export const googleCalendarConnections = pgTable("google_calendar_connections", {
   userId: text("user_id")
-    .notNull()
+    .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
-  metadata: jsonb("metadata"),
+  googleAccountId: text("google_account_id").notNull(),
+  accessTokenEncrypted: text("access_token_encrypted").notNull(),
+  refreshTokenEncrypted: text("refresh_token_encrypted").notNull(),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }).notNull(),
+  selectedCalendarIds: jsonb("selected_calendar_ids").notNull(),
+  keywords: jsonb("keywords").notNull(),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  syncError: text("sync_error"),
   ...timestamps,
 })
 

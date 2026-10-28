@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import Page from "./page"
@@ -19,6 +19,15 @@ describe("dashboard home page", () => {
     expect(screen.getAllByRole("button", { name: /Mở tab / })).toHaveLength(3)
   })
 
+  it("shows the same streak flower in the sidebar and dashboard card", () => {
+    render(<Page />)
+
+    const flowers = screen.getAllByRole("img", { name: /^Hoa streak:/ })
+    expect(flowers).toHaveLength(2)
+    expect(flowers[0]).toHaveAttribute("data-stage", flowers[1]?.getAttribute("data-stage"))
+    expect(flowers[0]).toHaveAttribute("aria-label", flowers[1]?.getAttribute("aria-label"))
+  })
+
   it("opens the related workspace tab from compact summary cards", () => {
     render(<Page />)
 
@@ -30,14 +39,15 @@ describe("dashboard home page", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Việc cần làm" })).toBeInTheDocument()
   })
 
-  it("keeps the completed-task KPI in sync when a task is completed", () => {
+  it("keeps the completed-task KPI in sync after the completion celebration", async () => {
     render(<Page />)
 
     fireEvent.click(
       screen.getByRole("button", { name: "Hoàn thành Ôn chương 3: Cấu trúc dữ liệu" }),
     )
 
-    expect(screen.getByText("2/4")).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("Hoàn thành!")
+    await waitFor(() => expect(screen.getByText("2/4")).toBeInTheDocument())
   })
 
   it("adds a task with its time and priority", () => {
@@ -46,9 +56,6 @@ describe("dashboard home page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Thêm việc" }))
     fireEvent.change(screen.getByPlaceholderText("Bạn cần làm gì?"), {
       target: { value: "Đọc tài liệu" },
-    })
-    fireEvent.change(screen.getByLabelText("Thời gian hoàn thành"), {
-      target: { value: "2026-10-27T19:30" },
     })
     fireEvent.click(screen.getByRole("button", { name: "Khẩn cấp" }))
     fireEvent.click(screen.getByRole("button", { name: "Lưu việc" }))
@@ -62,17 +69,18 @@ describe("dashboard home page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Xem tất cả lộ trình" }))
     fireEvent.click(screen.getByRole("button", { name: "Thêm lộ trình" }))
+    expect(screen.queryByLabelText("Tiến độ %")).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Tên khóa học"), {
       target: { value: "UI/UX Design" },
     })
     fireEvent.change(screen.getByLabelText("Mục tiêu hoặc thời hạn"), {
       target: { value: "Hoàn thành tháng 11" },
     })
-    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "35" } })
+    fireEvent.change(screen.getByLabelText("Ngày đích"), { target: { value: "2026-11-30" } })
     fireEvent.click(screen.getByRole("button", { name: "Thêm khóa học" }))
 
     expect(screen.getByText("UI/UX Design")).toBeInTheDocument()
-    expect(screen.getByText("35%")).toBeInTheDocument()
+    expect(screen.getByText(/Còn \d+ ngày/)).toBeInTheDocument()
   })
 
   it("splits a lesson list into timeline lessons for a roadmap", () => {
@@ -85,9 +93,24 @@ describe("dashboard home page", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Thêm bài học cho IELTS 7.0" }))
 
-    expect(screen.getByText("Bài 1 - Từ vựng")).toBeInTheDocument()
-    expect(screen.getByText("Bài 2 - Ngữ pháp")).toBeInTheDocument()
-    expect(screen.getByText("Bài 3 - Luyện tập")).toBeInTheDocument()
+    expect(screen.getByText("Từ vựng")).toBeInTheDocument()
+    expect(screen.getByText("Ngữ pháp")).toBeInTheDocument()
+    expect(screen.getByText("Luyện tập")).toBeInTheDocument()
+  })
+
+  it("uploads and previews a numbered lesson list", async () => {
+    render(<Page />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Xem tất cả lộ trình" }))
+    fireEvent.click(screen.getAllByRole("button", { name: /^Xem bài học/ })[0])
+    const file = new File(["1. Tokenization\n2. Embedding Layer"], "outline.txt", {
+      type: "text/plain",
+    })
+    fireEvent.change(screen.getByLabelText("Upload mục lục cho IELTS 7.0"), {
+      target: { files: [file] },
+    })
+
+    expect(await screen.findByText(/Đã nhận diện 2 lesson/)).toBeInTheDocument()
   })
 
   it("opens the todo form from the todo section and notifications from the header", () => {
@@ -97,7 +120,7 @@ describe("dashboard home page", () => {
     expect(screen.getByPlaceholderText("Bạn cần làm gì?")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Thông báo" }))
-    expect(screen.getByText("Bạn có 2 việc cần hoàn thành trong hôm nay.")).toBeInTheDocument()
+    expect(screen.getByText("Bạn chưa có thông báo nào.")).toBeInTheDocument()
   })
 
   it("opens a dedicated todo tab when viewing all tasks", () => {
@@ -259,10 +282,10 @@ describe("dashboard home page", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Lịch của tôi" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { level: 2, name: "Lịch sắp tới" })).toBeInTheDocument()
-    expect(screen.getByText("Nộp bài tập lớn tuần 5")).toBeInTheDocument()
+    expect(screen.getByText("Chưa có sự kiện trong ngày này")).toBeInTheDocument()
   })
 
-  it("removes a completed task and restores it with undo", () => {
+  it("removes a completed task after the celebration and restores it with undo", async () => {
     render(<Page />)
 
     fireEvent.click(screen.getByRole("button", { name: "Xem tất cả" }))
@@ -270,7 +293,9 @@ describe("dashboard home page", () => {
       screen.getByRole("button", { name: "Hoàn thành Ôn chương 3: Cấu trúc dữ liệu" }),
     )
 
-    expect(screen.queryByText("Ôn chương 3: Cấu trúc dữ liệu")).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText("Ôn chương 3: Cấu trúc dữ liệu")).not.toBeInTheDocument(),
+    )
     fireEvent.click(screen.getByRole("button", { name: "Hoàn tác" }))
     expect(screen.getAllByText("Ôn chương 3: Cấu trúc dữ liệu").length).toBeGreaterThan(0)
   })

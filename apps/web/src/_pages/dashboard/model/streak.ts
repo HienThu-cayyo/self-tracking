@@ -21,6 +21,16 @@ export type WeekDay = {
   completed: boolean
 }
 
+export type StreakFlowerStage = "resting" | "bud" | "opening" | "bloom" | "full"
+
+export function getStreakFlowerStage(streak: number): StreakFlowerStage {
+  if (streak >= 7) return "full"
+  if (streak >= 3) return "bloom"
+  if (streak >= 2) return "opening"
+  if (streak >= 1) return "bud"
+  return "resting"
+}
+
 const LOGS_KEY = "self-track-focus-logs"
 const TIMER_KEY = "self-track-focus-timer"
 

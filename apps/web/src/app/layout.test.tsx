@@ -6,7 +6,7 @@ import RootLayout, { metadata } from "./layout"
 describe("RootLayout", () => {
   it("exports product metadata and renders the document shell with providers", () => {
     expect(metadata).toEqual({
-      title: "self.track — Quản lý việc học và mục tiêu",
+      title: "Self-Track — Quản lý việc học và mục tiêu",
       description: "Theo dõi tiến độ học tập, deadline và mục tiêu cá nhân tại một nơi.",
     })
 

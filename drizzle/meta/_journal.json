@@ -8,6 +8,20 @@
       "when": 1793038077925,
       "tag": "0000_tricky_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793038077926,
+      "tag": "0002_add_roadmap_deadline",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793038077927,
+      "tag": "0003_calendar_events_and_google",
+      "breakpoints": true
     }
   ]
 }

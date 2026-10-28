@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   calculateCurrentStreak,
   DAILY_FOCUS_GOAL_SECONDS,
+  getStreakFlowerStage,
   getTimerRemainingSeconds,
   getWeekDays,
 } from "./streak"
@@ -56,5 +57,18 @@ describe("streak calculations", () => {
         now,
       ),
     ).toBe(1_175)
+  })
+
+  it.each([
+    [-1, "resting"],
+    [0, "resting"],
+    [1, "bud"],
+    [2, "opening"],
+    [3, "bloom"],
+    [6, "bloom"],
+    [7, "full"],
+    [30, "full"],
+  ] as const)("maps a %i-day streak to the %s flower stage", (days, expected) => {
+    expect(getStreakFlowerStage(days)).toBe(expected)
   })
 })

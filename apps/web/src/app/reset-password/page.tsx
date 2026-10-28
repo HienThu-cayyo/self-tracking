@@ -47,7 +47,7 @@ function ResetPasswordForm() {
           className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-white/10 dark:bg-white/5"
         />
         {message && <p className="text-sm text-slate-600 dark:text-slate-300">{message}</p>}
-        <button className="h-11 w-full rounded-xl bg-[#F9A8BB] font-semibold text-[#3f1c29]">
+        <button className="h-11 w-full rounded-xl bg-[#F5A9C4] font-semibold text-[#3f1c29]">
           Cập nhật mật khẩu
         </button>
         <Link href="/login" className="block text-center text-sm text-slate-500">

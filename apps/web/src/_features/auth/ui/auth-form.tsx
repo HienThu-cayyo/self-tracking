@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react"
 import type { ReactNode } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
@@ -57,7 +58,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
             onChange={(event) => setName(event.target.value)}
             required
             minLength={2}
-            className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-[#F9A8BB] dark:border-white/10 dark:bg-white/5"
+            className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-brand dark:border-white/10 dark:bg-white/5"
           />
         </label>
       )}
@@ -68,7 +69,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           required
-          className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-[#F9A8BB] dark:border-white/10 dark:bg-white/5"
+          className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-brand dark:border-white/10 dark:bg-white/5"
         />
       </label>
       <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -79,7 +80,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           onChange={(event) => setPassword(event.target.value)}
           required
           minLength={8}
-          className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-[#F9A8BB] dark:border-white/10 dark:bg-white/5"
+          className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-brand dark:border-white/10 dark:bg-white/5"
         />
       </label>
       {error && (
@@ -102,7 +103,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       )}
       <button
         disabled={loading}
-        className="h-11 w-full rounded-xl bg-[#F9A8BB] px-4 font-semibold text-[#3f1c29] transition hover:bg-[#f58da8] disabled:cursor-not-allowed disabled:opacity-60"
+        className="h-11 w-full rounded-xl bg-brand px-4 font-semibold text-[#432b3b] transition hover:bg-brand-signature disabled:cursor-not-allowed disabled:opacity-60"
       >
         {loading ? "Đang xử lý…" : mode === "login" ? "Đăng nhập" : "Tạo tài khoản"}
       </button>
@@ -136,12 +137,19 @@ export function AuthShell({
   children: ReactNode
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#fff8fa] px-5 py-10 text-slate-900 dark:bg-[#101116] dark:text-slate-100">
-      <section className="w-full max-w-md rounded-3xl border border-[#f6d5df] bg-white p-8 shadow-xl shadow-[#f9c6d4]/20 dark:border-white/10 dark:bg-[#171921]">
+    <main className="flex min-h-screen items-center justify-center bg-[#FFF9FB] px-5 py-10 text-slate-900 dark:bg-[#101116] dark:text-slate-100">
+      <section className="w-full max-w-md rounded-3xl border border-[#FCE7EF] bg-white p-8 shadow-xl shadow-[#F5A9C4]/20 dark:border-white/10 dark:bg-[#1b171b]">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-[#F9A8BB] text-xl font-bold text-[#3f1c29]">
-            ◎
-          </div>
+          <span className="mx-auto mb-5 block w-fit">
+            <Image
+              src="/brand/self-track-horizontal.png"
+              alt="Self-Track"
+              width={966}
+              height={254}
+              priority
+              className="h-auto w-[220px]"
+            />
+          </span>
           <h1 className="text-2xl font-bold">{title}</h1>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
         </div>

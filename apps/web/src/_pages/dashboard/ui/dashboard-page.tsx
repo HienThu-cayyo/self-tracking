@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react"
+import Image from "next/image"
 import {
   advanceFocusTimer,
   calculateCurrentStreak,
@@ -21,15 +22,14 @@ import {
 } from "../model/streak"
 import {
   ArrowUpRight,
-  Bell,
   BookOpen,
+  CalendarClock,
   CalendarDays,
   Check,
   CheckCircle2,
   ChevronRight,
   Circle,
   Clock3,
-  Flame,
   Flower2,
   GraduationCap,
   LayoutDashboard,
@@ -44,22 +44,34 @@ import {
   Search,
   Sparkles,
   Sun,
-  Target,
   Trash2,
+  Upload,
   X,
 } from "lucide-react"
-import { EMPTY_DASHBOARD_SUMMARY, getDailyQuote, type DashboardSummary } from "../model/dashboard"
+import { EMPTY_DASHBOARD_SUMMARY, getDailyQuotes, type DashboardSummary } from "../model/dashboard"
 import {
   CompactKpiGrid,
   DashboardEmptyState,
   DashboardHero,
   DashboardSectionHeader,
   DailyFocusCard,
+  StreakFlower,
   WeeklyInsightStrip,
   summaryIcons,
 } from "./dashboard-widgets"
+import { calculateLessonProgress, getRoadmapDeadlineState, parseLessonList } from "../model/roadmap"
+import { sortTasksByPriority } from "../model/tasks"
+import { NotificationCenter } from "./notification-center"
+import {
+  EVENT_TYPE_LABELS,
+  getEventDateKey,
+  getLocalDateKey,
+  getWeekDateKeys,
+  type CalendarEvent,
+  sortCalendarEvents,
+} from "../model/calendar"
 
-type Task = {
+export type Task = {
   id: number | string
   title: string
   subject: string
@@ -80,6 +92,7 @@ type Course = {
   title: string
   goal: string
   progress: number
+  deadline: string | null
   lessons: Lesson[]
   featured?: boolean
 }
@@ -151,7 +164,7 @@ const initialSubjects: Subject[] = [
     name: "Cấu trúc dữ liệu",
     code: "CS201",
     progress: 72,
-    color: "bg-violet-500",
+    color: "bg-[#D76B96]",
     detail: "3 / 4 chương",
     credits: 3,
     semester: "Học kỳ 1",
@@ -162,7 +175,7 @@ const initialSubjects: Subject[] = [
     name: "Lập trình Web",
     code: "CS302",
     progress: 58,
-    color: "bg-sky-500",
+    color: "bg-[#D76B96]",
     detail: "5 / 8 chủ đề",
     credits: 3,
     semester: "Học kỳ 1",
@@ -173,7 +186,7 @@ const initialSubjects: Subject[] = [
     name: "Hệ điều hành",
     code: "CS204",
     progress: 41,
-    color: "bg-amber-400",
+    color: "bg-[#D76B96]",
     detail: "2 / 5 chương",
     credits: 4,
     semester: "Học kỳ 2",
@@ -193,6 +206,7 @@ const initialCourses: Course[] = [
     title: "IELTS 7.0",
     goal: "Mục tiêu trước tháng 12, 2024",
     progress: 46,
+    deadline: null,
     lessons: [
       { id: 101, title: "Listening: Multiple Choice", done: true },
       { id: 102, title: "Reading: True / False / Not Given", done: false },
@@ -205,6 +219,7 @@ const initialCourses: Course[] = [
     title: "Frontend Developer",
     goal: "Lộ trình kỹ năng cá nhân",
     progress: 12,
+    deadline: null,
     lessons: [],
   },
 ]
@@ -273,19 +288,19 @@ export function DashboardPage() {
   const [completedTasks, setCompletedTasks] = useState(initialTasks.filter((task) => task.done))
   const [showAddTask, setShowAddTask] = useState(false)
   const [newTask, setNewTask] = useState("")
-  const [newTaskDue, setNewTaskDue] = useState("")
   const [newTaskPriority, setNewTaskPriority] = useState<Priority>("Vừa")
   const [courses, setCourses] = useState(initialCourses)
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [showAddCourse, setShowAddCourse] = useState(false)
   const [newCourse, setNewCourse] = useState("")
   const [newCourseGoal, setNewCourseGoal] = useState("")
-  const [newCourseProgress, setNewCourseProgress] = useState("0")
+  const [newCourseDeadline, setNewCourseDeadline] = useState("")
   const [subjects, setSubjects] = useState(initialSubjects)
-  const [showNotifications, setShowNotifications] = useState(false)
   const [showMobileNav, setShowMobileNav] = useState(false)
   const [undoTask, setUndoTask] = useState<UndoTask | null>(null)
   const [userName, setUserName] = useState("Minh Nguyễn")
   const [userEmail, setUserEmail] = useState("")
+  const [userId, setUserId] = useState("")
   const [summary, setSummary] = useState<DashboardSummary>({
     ...EMPTY_DASHBOARD_SUMMARY,
     completedTasks: initialTasks.filter((task) => task.done).length,
@@ -296,8 +311,9 @@ export function DashboardPage() {
   useEffect(() => {
     void fetch("/api/auth/me")
       .then((response) => (response.ok ? response.json() : null))
-      .then((data: { user?: { name?: string; email?: string } } | null) => {
+      .then((data: { user?: { id?: string; name?: string; email?: string } } | null) => {
         if (!data?.user) return
+        if (data.user.id) setUserId(data.user.id)
         if (data.user.name) setUserName(data.user.name)
         if (data.user.email) setUserEmail(data.user.email)
       })
@@ -317,6 +333,7 @@ export function DashboardPage() {
               title: string
               goal: string
               progress: number
+              deadline: string | null
               featured: boolean
               lessons: Array<{ id: string; title: string; done: boolean }>
             }>
@@ -328,6 +345,7 @@ export function DashboardPage() {
               semester: string
               completed: boolean
             }>
+            events?: CalendarEvent[]
             summary?: DashboardSummary
           } | null,
         ) => {
@@ -337,6 +355,7 @@ export function DashboardPage() {
             setCourses(
               data.courses.map((course) => ({
                 ...course,
+                deadline: course.deadline ?? null,
                 lessons: course.lessons.map((lesson) => ({
                   id: lesson.id,
                   title: lesson.title,
@@ -346,14 +365,14 @@ export function DashboardPage() {
             )
           if (data?.subjects)
             setSubjects(
-              data.subjects.map((subject, index) => ({
+              data.subjects.map((subject) => ({
                 ...subject,
                 progress: subject.completed ? 100 : 0,
                 detail: "Chưa cập nhật",
-                color:
-                  ["bg-violet-500", "bg-sky-500", "bg-amber-400"][index % 3] ?? "bg-violet-500",
+                color: "bg-[#D76B96]",
               })),
             )
+          if (data?.events) setCalendarEvents(sortCalendarEvents(data.events))
           if (data?.summary) setSummary(data.summary)
         },
       )
@@ -385,7 +404,10 @@ export function DashboardPage() {
   }
 
   const remaining = useMemo(() => tasks.filter((task) => !task.done).length, [tasks])
+  const orderedTasks = useMemo(() => sortTasksByPriority(tasks), [tasks])
+  const orderedCompletedTasks = useMemo(() => sortTasksByPriority(completedTasks), [completedTasks])
   const currentTime = timestamp ? new Date(timestamp) : null
+  const dailyQuotes = currentTime ? getDailyQuotes(currentTime) : null
   const focusAnchor = currentTime ?? new Date(2000, 0, 3)
   const greeting = currentTime ? getGreeting(currentTime) : "sáng"
   const dateLabel = currentTime ? formatLiveDate(currentTime) : "Đang cập nhật thời gian…"
@@ -454,7 +476,7 @@ export function DashboardPage() {
     syncDashboard({ action: "delete-task", id })
   }
 
-  function addTaskDetails(title: string, due: string, priority: Priority) {
+  function addTaskDetails(title: string, priority: Priority) {
     if (!title.trim()) return
     setSummary((current) => ({ ...current, totalTasks: current.totalTasks + 1 }))
     setTasks((current) => [
@@ -462,7 +484,7 @@ export function DashboardPage() {
         id: Date.now(),
         title: title.trim(),
         subject: "Cá nhân",
-        due: due ? formatTaskDue(due) : "Chưa đặt thời gian",
+        due: "Chưa đặt thời gian",
         priority,
         done: false,
       },
@@ -471,15 +493,14 @@ export function DashboardPage() {
     syncDashboard({
       action: "create-task",
       title: title.trim(),
-      due: due ? formatTaskDue(due) : "Chưa đặt thời gian",
+      due: "Chưa đặt thời gian",
       priority,
     })
   }
 
   function addTask() {
-    addTaskDetails(newTask, newTaskDue, newTaskPriority)
+    addTaskDetails(newTask, newTaskPriority)
     setNewTask("")
-    setNewTaskDue("")
     setNewTaskPriority("Vừa")
     setShowAddTask(false)
   }
@@ -493,7 +514,8 @@ export function DashboardPage() {
         id: Date.now(),
         title: newCourse.trim(),
         goal: newCourseGoal.trim() || "Lộ trình mới",
-        progress: clampProgress(Number(newCourseProgress)),
+        progress: 0,
+        deadline: newCourseDeadline || null,
         lessons: [],
       },
     ])
@@ -501,22 +523,23 @@ export function DashboardPage() {
       action: "create-course",
       title: newCourse.trim(),
       goal: newCourseGoal.trim() || "Lộ trình mới",
-      progress: clampProgress(Number(newCourseProgress)),
+      deadline: newCourseDeadline || null,
     })
     setNewCourse("")
     setNewCourseGoal("")
-    setNewCourseProgress("0")
+    setNewCourseDeadline("")
     setShowAddCourse(false)
   }
 
-  function addCourseFromRoadmap(title: string, goal: string, progress: number) {
+  function addCourseFromRoadmap(title: string, goal: string, deadline: string | null) {
     setCourses((current) => [
       ...current,
       {
         id: Date.now(),
         title,
         goal: goal || "Lộ trình mới",
-        progress: clampProgress(progress),
+        progress: 0,
+        deadline,
         lessons: [],
       },
     ])
@@ -524,8 +547,15 @@ export function DashboardPage() {
       action: "create-course",
       title,
       goal: goal || "Lộ trình mới",
-      progress: clampProgress(progress),
+      deadline,
     })
+  }
+
+  function updateCourseDeadline(courseId: number | string, deadline: string | null) {
+    setCourses((current) =>
+      current.map((course) => (course.id === courseId ? { ...course, deadline } : course)),
+    )
+    syncDashboard({ action: "update-roadmap-deadline", roadmapId: courseId, deadline })
   }
 
   function toggleSubjectCompletion(id: number | string) {
@@ -586,37 +616,31 @@ export function DashboardPage() {
 
   function toggleLesson(courseId: number | string, lessonId: number | string) {
     setCourses((current) =>
-      current.map((course) =>
-        course.id === courseId
-          ? {
-              ...course,
-              lessons: course.lessons.map((lesson) =>
-                lesson.id === lessonId ? { ...lesson, done: !lesson.done } : lesson,
-              ),
-            }
-          : course,
-      ),
+      current.map((course) => {
+        if (course.id !== courseId) return course
+        const lessons = course.lessons.map((lesson) =>
+          lesson.id === lessonId ? { ...lesson, done: !lesson.done } : lesson,
+        )
+        return { ...course, lessons, progress: calculateLessonProgress(lessons, course.progress) }
+      }),
     )
     syncDashboard({ action: "toggle-lesson", roadmapId: courseId, lessonId })
   }
 
   function addLessons(courseId: number | string, titles: string[]) {
     setCourses((current) =>
-      current.map((course) =>
-        course.id === courseId
-          ? {
-              ...course,
-              lessons: [
-                ...course.lessons,
-                ...titles.map((title, index) => ({
-                  id: Date.now() + index,
-                  title,
-                  done: false,
-                })),
-              ],
-            }
-          : course,
-      ),
+      current.map((course) => {
+        if (course.id !== courseId) return course
+        const lessons = [
+          ...course.lessons,
+          ...titles.map((title, index) => ({
+            id: Date.now() + index,
+            title,
+            done: false,
+          })),
+        ]
+        return { ...course, lessons, progress: calculateLessonProgress(lessons, course.progress) }
+      }),
     )
     syncDashboard({ action: "add-lessons", roadmapId: courseId, titles })
   }
@@ -626,7 +650,7 @@ export function DashboardPage() {
   const todayMinutes = Math.floor(getTodayFocusSeconds(focusLogs, focusAnchor) / 60)
   const weeklyMinutes = Math.floor(weekDays.reduce((total, day) => total + day.seconds, 0) / 60)
   const weeklySessions = weekDays.filter((day) => day.seconds > 0).length
-  const priorityTask = tasks.find((task) => !task.done)
+  const priorityTask = orderedTasks.find((task) => !task.done)
   const weeklyInsight =
     weeklySessions === 0
       ? "Bắt đầu một phiên học ngắn hôm nay để tạo nhịp cho cả tuần."
@@ -635,19 +659,21 @@ export function DashboardPage() {
         : `Bạn đã có ${weeklySessions} ngày học trong tuần này — thêm một phiên nữa để tiến gần mục tiêu.`
 
   return (
-    <main className="min-h-dvh bg-[#f7f8fc] text-slate-900 dark:bg-[#11131a] dark:text-slate-100">
+    <main className="min-h-dvh bg-[#fbf8f9] text-slate-900 dark:bg-[#11131a] dark:text-slate-100">
       <div className="flex min-h-dvh">
         <aside
           className={`${showMobileNav ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} fixed inset-y-0 left-0 z-30 flex w-[252px] flex-col border-r border-slate-200 bg-white px-5 py-6 transition-transform dark:border-white/8 dark:bg-[#171921]`}
         >
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2.5">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-600/20">
-                <Target className="size-5" />
-              </div>
-              <span className="text-lg font-bold tracking-tight">
-                self<span className="text-violet-500">.</span>track
-              </span>
+              <Image
+                src="/brand/self-track-horizontal.png"
+                alt="Self-Track"
+                width={966}
+                height={254}
+                priority
+                className="h-auto w-[148px]"
+              />
             </div>
             <button
               className="lg:hidden"
@@ -668,12 +694,12 @@ export function DashboardPage() {
                   setActiveNav(label)
                   setShowMobileNav(false)
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeNav === label ? "bg-violet-50 text-violet-700 dark:bg-violet-500/12 dark:text-violet-300" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"}`}
+                className={`dashboard-focus flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${activeNav === label ? "bg-[#FCE7EF]/45 text-[#63465A] dark:bg-[#F5A9C4]/12 dark:text-pink-100" : "text-slate-500 hover:bg-[#fff4f6] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"}`}
               >
                 <Icon className="size-[18px]" />
                 {label}
                 {label === "Việc cần làm" && (
-                  <span className="ml-auto rounded-full bg-violet-100 px-2 py-0.5 text-[10px] text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
+                  <span className="ml-auto rounded-full bg-[#FCE7EF]/60 px-2 py-0.5 text-[10px] text-[#63465A] dark:bg-[#F5A9C4]/18 dark:text-pink-100">
                     {remaining}
                   </span>
                 )}
@@ -718,7 +744,7 @@ export function DashboardPage() {
           />
         )}
         <section className="w-full lg:ml-[252px]">
-          <header className="flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/80 px-5 backdrop-blur md:px-10 dark:border-white/8 dark:bg-[#11131a]/80">
+          <header className="relative z-40 flex h-[72px] items-center justify-between border-b border-[#eadde2] bg-[#fffdfd]/85 px-5 backdrop-blur md:px-10 dark:border-white/8 dark:bg-[#11131a]/80">
             <div className="flex items-center gap-3">
               <button
                 className="lg:hidden"
@@ -731,7 +757,7 @@ export function DashboardPage() {
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
                   placeholder="Tìm kiếm..."
-                  className="h-9 w-56 rounded-lg border-0 bg-slate-100 pl-9 text-sm outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-violet-200 dark:bg-white/5 dark:focus:ring-violet-500/20"
+                  className="dashboard-focus h-9 w-56 rounded-lg border border-transparent bg-slate-100 pl-9 text-sm outline-none placeholder:text-slate-400 focus:border-[#F5A9C4]/70 focus:ring-2 focus:ring-[#F5A9C4]/20 dark:bg-white/5"
                 />
               </div>
             </div>
@@ -741,7 +767,7 @@ export function DashboardPage() {
                 onClick={toggleTheme}
                 aria-label={theme === "dark" ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
                 title={theme === "dark" ? "Chế độ sáng" : "Chế độ tối"}
-                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/5 dark:hover:text-white"
+                className="dashboard-focus rounded-lg p-1.5 text-slate-400 transition hover:bg-[#fff1f4] hover:text-[#63465A] dark:hover:bg-white/5 dark:hover:text-white"
               >
                 {theme === "dark" ? (
                   <Sun className="size-[18px]" />
@@ -749,23 +775,13 @@ export function DashboardPage() {
                   <Moon className="size-[18px]" />
                 )}
               </button>
-              <button
-                className="relative text-slate-400 hover:text-slate-700 dark:hover:text-white"
-                aria-label="Thông báo"
-                aria-expanded={showNotifications}
-                onClick={() => setShowNotifications((current) => !current)}
-              >
-                <Bell className="size-[19px]" />
-                <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-rose-500" />
-              </button>
-              {showNotifications && (
-                <div className="absolute right-5 top-14 z-20 w-64 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-lg dark:border-white/10 dark:bg-[#171921]">
-                  <p className="text-sm font-semibold">Thông báo</p>
-                  <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    Bạn có 2 việc cần hoàn thành trong hôm nay.
-                  </p>
-                </div>
-              )}
+              <NotificationCenter
+                events={calendarEvents}
+                courses={courses}
+                now={timestamp}
+                userId={userId}
+                onNavigate={setActiveNav}
+              />
               <div className="hidden h-5 w-px bg-slate-200 sm:block dark:bg-white/10" />
               <span className="text-sm text-slate-500 dark:text-slate-400">{dateLabel}</span>
             </div>
@@ -773,15 +789,16 @@ export function DashboardPage() {
 
           {activeNav === "Việc cần làm" ? (
             <TaskListView
-              tasks={tasks}
+              tasks={orderedTasks}
               onToggle={toggleTask}
               onBack={() => setActiveNav("Tổng quan")}
               onAddTask={addTaskDetails}
-              completedTasks={completedTasks}
+              completedTasks={orderedCompletedTasks}
               onRestoreTask={restoreCompletedTask}
               onTrashTask={trashCompletedTask}
               focusTimer={focusTimer}
               now={timestamp}
+              timerQuote={dailyQuotes?.timer}
               onSetTimer={setTaskTimer}
               onStartTimer={startTaskTimer}
               onPauseTimer={pauseTaskTimer}
@@ -792,6 +809,7 @@ export function DashboardPage() {
               courses={courses}
               onBack={() => setActiveNav("Tổng quan")}
               onAddCourse={addCourseFromRoadmap}
+              onUpdateDeadline={updateCourseDeadline}
               onAddLessons={addLessons}
               onToggleLesson={toggleLesson}
             />
@@ -806,13 +824,17 @@ export function DashboardPage() {
               onUpdateGpa={updateGpa}
             />
           ) : activeNav === "Lịch của tôi" ? (
-            <CalendarView onBack={() => setActiveNav("Tổng quan")} />
+            <CalendarView
+              events={calendarEvents}
+              onEventsChange={setCalendarEvents}
+              onBack={() => setActiveNav("Tổng quan")}
+            />
           ) : (
             <div className="mx-auto max-w-[1380px] px-5 py-8 md:px-10 md:py-10">
               <DashboardHero
                 greeting={greeting}
                 userName={userName}
-                quote={currentTime ? getDailyQuote(currentTime) : undefined}
+                quote={dailyQuotes?.greeting}
               />
 
               <DailyFocusCard
@@ -886,7 +908,7 @@ export function DashboardPage() {
               </div>
 
               <div className="mt-8 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/8 dark:bg-[#171921] md:p-6">
+                <section className="dashboard-surface dashboard-card-hover p-5 md:p-6">
                   <DashboardSectionHeader
                     title="Việc cần ưu tiên"
                     description="Những việc bạn nên xử lý sớm"
@@ -894,13 +916,13 @@ export function DashboardPage() {
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => setShowAddTask(true)}
-                          className="flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-300"
+                          className="dashboard-text-action dashboard-focus flex items-center gap-1 rounded-md px-1 text-xs font-semibold"
                         >
                           <Plus className="size-3.5" /> Thêm việc
                         </button>
                         <button
                           onClick={() => setActiveNav("Việc cần làm")}
-                          className="flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-300"
+                          className="dashboard-text-action dashboard-focus flex items-center gap-1 rounded-md px-1 text-xs font-semibold"
                         >
                           Xem tất cả <ArrowUpRight className="size-3.5" />
                         </button>
@@ -909,12 +931,12 @@ export function DashboardPage() {
                   />
                   {tasks.length > 0 ? (
                     <div className="space-y-2">
-                      {tasks.slice(0, 4).map((task, index) => (
+                      {orderedTasks.slice(0, 4).map((task, index) => (
                         <div
                           key={task.id}
                           className={
                             index === 0 && !task.done
-                              ? "rounded-xl ring-1 ring-[#F9C6D4]/70 dark:ring-pink-300/15"
+                              ? "rounded-xl ring-1 ring-[#FCE7EF]/70 dark:ring-pink-300/15"
                               : ""
                           }
                         >
@@ -939,7 +961,7 @@ export function DashboardPage() {
                         addTask()
                       }}
                     >
-                      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <div>
                         <label className="min-w-0">
                           <span className="sr-only">Tên công việc</span>
                           <input
@@ -948,18 +970,7 @@ export function DashboardPage() {
                             value={newTask}
                             onChange={(event) => setNewTask(event.target.value)}
                             placeholder="Bạn cần làm gì?"
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 dark:border-white/10 dark:bg-[#171921]"
-                          />
-                        </label>
-                        <label className="relative">
-                          <span className="sr-only">Thời gian hoàn thành</span>
-                          <Clock3 className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="datetime-local"
-                            value={newTaskDue}
-                            onChange={(event) => setNewTaskDue(event.target.value)}
-                            aria-label="Thời gian hoàn thành"
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-2 text-xs text-slate-600 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 dark:border-white/10 dark:bg-[#171921] dark:text-slate-300 sm:w-[190px]"
+                            className="dashboard-focus h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#F5A9C4]/70 focus:ring-2 focus:ring-[#F5A9C4]/20 dark:border-white/10 dark:bg-[#171921]"
                           />
                         </label>
                       </div>
@@ -975,7 +986,7 @@ export function DashboardPage() {
                                 type="button"
                                 aria-pressed={newTaskPriority === priority}
                                 onClick={() => setNewTaskPriority(priority)}
-                                className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition ${priorityStyles[priority]} ${newTaskPriority === priority ? "ring-2 ring-violet-400 ring-offset-1 dark:ring-offset-[#171921]" : "opacity-60 hover:opacity-100"}`}
+                                className={`dashboard-focus rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition ${priorityStyles[priority]} ${newTaskPriority === priority ? "ring-2 ring-[#F5A9C4] ring-offset-1 dark:ring-offset-[#171921]" : "opacity-60 hover:opacity-100"}`}
                               >
                                 {priority === "Cao"
                                   ? "Khẩn cấp"
@@ -996,7 +1007,7 @@ export function DashboardPage() {
                           </button>
                           <button
                             type="submit"
-                            className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700"
+                            className="dashboard-primary-button dashboard-focus rounded-lg px-3 py-2 text-xs font-semibold"
                           >
                             Lưu việc
                           </button>
@@ -1006,7 +1017,7 @@ export function DashboardPage() {
                   )}
                 </section>
 
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/8 dark:bg-[#171921] md:p-6">
+                <section className="dashboard-surface dashboard-card-hover p-5 md:p-6">
                   <DashboardSectionHeader
                     title="Lộ trình đang theo dõi"
                     description="Tiếp tục chinh phục mục tiêu"
@@ -1014,7 +1025,7 @@ export function DashboardPage() {
                       <button
                         onClick={() => setActiveNav("Lộ trình")}
                         aria-label="Xem tất cả lộ trình"
-                        className="text-xs font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-300"
+                        className="dashboard-text-action dashboard-focus rounded-md px-1 text-xs font-semibold"
                       >
                         Xem tất cả
                       </button>
@@ -1039,10 +1050,10 @@ export function DashboardPage() {
                             value={newCourse}
                             onChange={(event) => setNewCourse(event.target.value)}
                             placeholder="Ví dụ: UI/UX Design"
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 dark:border-white/10 dark:bg-[#171921]"
+                            className="dashboard-focus h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#F5A9C4]/70 focus:ring-2 focus:ring-[#F5A9C4]/20 dark:border-white/10 dark:bg-[#171921]"
                           />
                         </label>
-                        <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_100px]">
+                        <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_180px]">
                           <label>
                             <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">
                               Mục tiêu hoặc thời hạn
@@ -1051,20 +1062,19 @@ export function DashboardPage() {
                               value={newCourseGoal}
                               onChange={(event) => setNewCourseGoal(event.target.value)}
                               placeholder="Ví dụ: Hoàn thành tháng 12"
-                              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 dark:border-white/10 dark:bg-[#171921]"
+                              className="dashboard-focus h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-[#F5A9C4]/70 focus:ring-2 focus:ring-[#F5A9C4]/20 dark:border-white/10 dark:bg-[#171921]"
                             />
                           </label>
                           <label>
                             <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                              Tiến độ (%)
+                              Ngày đích
                             </span>
                             <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={newCourseProgress}
-                              onChange={(event) => setNewCourseProgress(event.target.value)}
-                              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/15 dark:border-white/10 dark:bg-[#171921]"
+                              type="date"
+                              value={newCourseDeadline}
+                              onChange={(event) => setNewCourseDeadline(event.target.value)}
+                              aria-label="Ngày đích"
+                              className="dashboard-focus h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-[#F5A9C4]/70 focus:ring-2 focus:ring-[#F5A9C4]/20 dark:border-white/10 dark:bg-[#171921]"
                             />
                           </label>
                         </div>
@@ -1079,7 +1089,7 @@ export function DashboardPage() {
                         </button>
                         <button
                           type="submit"
-                          className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-700"
+                          className="dashboard-primary-button dashboard-focus rounded-lg px-3 py-2 text-xs font-semibold"
                         >
                           Thêm khóa học
                         </button>
@@ -1096,9 +1106,7 @@ export function DashboardPage() {
                           className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition hover:border-pink-200 hover:bg-pink-50/50 dark:hover:border-pink-300/20 dark:hover:bg-pink-300/5 ${course.featured ? "border-pink-200/80 bg-pink-50/40 dark:border-pink-300/20 dark:bg-pink-300/5" : "border-dashed border-slate-200 dark:border-white/10"}`}
                         >
                           <span className="flex min-w-0 items-center gap-3">
-                            <span
-                              className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${course.featured ? "bg-pink-100 text-pink-700 dark:bg-pink-300/15 dark:text-pink-200" : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"}`}
-                            >
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#FCE7EF]/45 text-[#63465A] dark:bg-[#F5A9C4]/12 dark:text-pink-100">
                               {course.featured ? (
                                 <GraduationCap className="size-4" />
                               ) : (
@@ -1110,9 +1118,7 @@ export function DashboardPage() {
                                 {course.title}
                               </span>
                               <span className="mt-0.5 block truncate text-[11px] text-slate-400">
-                                {course.featured
-                                  ? `${course.progress}% hoàn thành · ${course.goal}`
-                                  : `${course.progress}% hoàn thành`}
+                                {course.progress}% hoàn thành
                               </span>
                             </span>
                           </span>
@@ -1133,14 +1139,14 @@ export function DashboardPage() {
               </div>
 
               <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/8 dark:bg-[#171921] md:p-6">
+                <section className="dashboard-surface dashboard-card-hover p-5 md:p-6">
                   <DashboardSectionHeader
                     title="Tiến độ môn học"
                     description="Học kỳ 1 · Năm học 2024–2025"
                     action={
                       <button
                         onClick={() => setActiveNav("Môn học")}
-                        className="flex items-center gap-1 text-xs font-semibold text-violet-600 dark:text-violet-300"
+                        className="dashboard-text-action dashboard-focus flex items-center gap-1 rounded-md px-1 text-xs font-semibold"
                       >
                         Quản lý môn học <ChevronRight className="size-3.5" />
                       </button>
@@ -1163,7 +1169,7 @@ export function DashboardPage() {
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/8">
                           <div
-                            className={`h-full rounded-full ${subject.color}`}
+                            className="progress-fill progress-fill-subject h-full rounded-full"
                             style={{ width: `${subject.progress}%` }}
                           />
                         </div>
@@ -1171,7 +1177,7 @@ export function DashboardPage() {
                     ))}
                   </div>
                 </section>
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/8 dark:bg-[#171921] md:p-6">
+                <section className="dashboard-surface dashboard-card-hover p-5 md:p-6">
                   <DashboardSectionHeader
                     title="Lịch sắp tới"
                     description="Các mốc quan trọng trong tuần"
@@ -1186,27 +1192,14 @@ export function DashboardPage() {
                     }
                   />
                   <div className="space-y-4">
-                    <Event
-                      day="22"
-                      month="THÁNG 10"
-                      title="Nộp bài tập lớn tuần 5"
-                      meta="Lập trình Web · 23:59"
-                      color="violet"
-                    />
-                    <Event
-                      day="24"
-                      month="THÁNG 10"
-                      title="Kiểm tra giữa kỳ"
-                      meta="Cấu trúc dữ liệu · 08:00"
-                      color="rose"
-                    />
-                    <Event
-                      day="26"
-                      month="THÁNG 10"
-                      title="Buổi học IELTS"
-                      meta="Speaking · 19:30"
-                      color="sky"
-                    />
+                    {calendarEvents.slice(0, 3).map((event) => (
+                      <CalendarEventRow key={event.id} event={event} />
+                    ))}
+                    {!calendarEvents.length && (
+                      <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400 dark:border-white/10">
+                        Chưa có sự kiện sắp tới.
+                      </p>
+                    )}
                   </div>
                 </section>
               </div>
@@ -1239,6 +1232,7 @@ function TaskListView({
   onTrashTask,
   focusTimer,
   now,
+  timerQuote,
   onSetTimer,
   onStartTimer,
   onPauseTimer,
@@ -1248,11 +1242,12 @@ function TaskListView({
   completedTasks: Task[]
   onToggle: (id: number | string) => void
   onBack: () => void
-  onAddTask: (title: string, due: string, priority: Priority) => void
+  onAddTask: (title: string, priority: Priority) => void
   onRestoreTask: (id: number | string) => void
   onTrashTask: (id: number | string) => void
   focusTimer: PersistedFocusTimer | null
   now: number
+  timerQuote?: string
   onSetTimer: (taskId: number | string | null, minutes: number) => void
   onStartTimer: (taskId: number | string | null) => void
   onPauseTimer: () => void
@@ -1261,15 +1256,13 @@ function TaskListView({
   const [showAddTask, setShowAddTask] = useState(false)
   const [showCompleted, setShowCompleted] = useState(false)
   const [newTask, setNewTask] = useState("")
-  const [newTaskDue, setNewTaskDue] = useState("")
   const [newTaskPriority, setNewTaskPriority] = useState<Priority>("Vừa")
   const remaining = tasks.filter((task) => !task.done).length
 
   function submitTask() {
     if (!newTask.trim()) return
-    onAddTask(newTask, newTaskDue, newTaskPriority)
+    onAddTask(newTask, newTaskPriority)
     setNewTask("")
-    setNewTaskDue("")
     setNewTaskPriority("Vừa")
     setShowAddTask(false)
   }
@@ -1308,6 +1301,7 @@ function TaskListView({
       <FocusTimerPanel
         focusTimer={focusTimer}
         now={now}
+        quote={timerQuote}
         onSetTimer={onSetTimer}
         onStartTimer={onStartTimer}
         onPauseTimer={onPauseTimer}
@@ -1329,7 +1323,7 @@ function TaskListView({
               submitTask()
             }}
           >
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_190px]">
+            <div>
               <input
                 autoFocus
                 required
@@ -1338,13 +1332,6 @@ function TaskListView({
                 placeholder="Bạn cần làm gì?"
                 aria-label="Tên công việc"
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400 dark:border-white/10 dark:bg-[#171921]"
-              />
-              <input
-                type="datetime-local"
-                value={newTaskDue}
-                onChange={(event) => setNewTaskDue(event.target.value)}
-                aria-label="Thời gian hoàn thành"
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-600 outline-none focus:border-violet-400 dark:border-white/10 dark:bg-[#171921] dark:text-slate-300"
               />
             </div>
             <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
@@ -1436,6 +1423,7 @@ function TaskListView({
 export function FocusTimerPanel({
   focusTimer,
   now,
+  quote,
   onSetTimer,
   onStartTimer,
   onPauseTimer,
@@ -1443,6 +1431,7 @@ export function FocusTimerPanel({
 }: {
   focusTimer: PersistedFocusTimer | null
   now: number
+  quote?: string
   onSetTimer: (taskId: number | string | null, minutes: number) => void
   onStartTimer: (taskId: number | string | null) => void
   onPauseTimer: () => void
@@ -1493,11 +1482,11 @@ export function FocusTimerPanel({
           aria-live="polite"
         >
           <div className="relative flex flex-col items-center text-center">
-            <span className="absolute -left-16 top-1 size-3 animate-ping rounded-full bg-[#F9A8BB]" />
+            <span className="absolute -left-16 top-1 size-3 animate-ping rounded-full bg-[#F5A9C4]" />
             <span className="absolute -right-14 top-7 size-2 animate-ping rounded-full bg-violet-400 [animation-delay:200ms]" />
             <span className="absolute -top-4 right-0 size-2 animate-ping rounded-full bg-amber-300 [animation-delay:400ms]" />
-            <Flower2 className="size-20 animate-bounce text-[#F9A8BB] drop-shadow-lg" />
-            <p className="mt-2 text-lg font-bold text-[#7D2945] dark:text-pink-100">
+            <Flower2 className="size-20 animate-bounce text-[#F5A9C4] drop-shadow-lg" />
+            <p className="mt-2 text-lg font-bold text-[#63465A] dark:text-pink-100">
               Mục tiêu hoàn thành!
             </p>
             <p className="mt-1 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-300">
@@ -1512,11 +1501,11 @@ export function FocusTimerPanel({
             <Clock3 className="size-4" />
             <p className="text-xs font-bold uppercase tracking-[0.16em]">Timer tập trung</p>
           </div>
-          <h2 className="mt-2 text-lg font-semibold">Một phiên học, một bước tiến</h2>
-          <p className="mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
-            Timer hoạt động độc lập với danh sách việc. Thời gian thực sự chạy sẽ tự cộng vào
-            streak.
-          </p>
+          {quote ? (
+            <p className="mt-2 line-clamp-2 max-w-md text-sm italic leading-5 text-slate-600 dark:text-slate-300">
+              “{quote}”
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-center gap-3 sm:items-end">
           <span className="font-mono text-5xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-white">
@@ -1596,39 +1585,66 @@ function RoadmapView({
   courses,
   onBack,
   onAddCourse,
+  onUpdateDeadline,
   onAddLessons,
   onToggleLesson,
 }: {
   courses: Course[]
   onBack: () => void
-  onAddCourse: (title: string, goal: string, progress: number) => void
+  onAddCourse: (title: string, goal: string, deadline: string | null) => void
+  onUpdateDeadline: (courseId: number | string, deadline: string | null) => void
   onAddLessons: (courseId: number | string, titles: string[]) => void
   onToggleLesson: (courseId: number | string, lessonId: number | string) => void
 }) {
   const [showAddCourse, setShowAddCourse] = useState(false)
   const [newCourse, setNewCourse] = useState("")
   const [newCourseGoal, setNewCourseGoal] = useState("")
-  const [newCourseProgress, setNewCourseProgress] = useState("0")
+  const [newCourseDeadline, setNewCourseDeadline] = useState("")
   const [lessonDrafts, setLessonDrafts] = useState<Record<string, string>>({})
+  const [lessonErrors, setLessonErrors] = useState<Record<string, string>>({})
+  const [lessonPreviews, setLessonPreviews] = useState<Record<string, string[]>>({})
+  const [deadlineDrafts, setDeadlineDrafts] = useState<Record<string, string>>({})
+  const [editingDeadlines, setEditingDeadlines] = useState<Set<number | string>>(() => new Set())
   const [expandedCourses, setExpandedCourses] = useState<Set<number | string>>(() => new Set())
 
   function submitCourse() {
     if (!newCourse.trim()) return
-    onAddCourse(newCourse.trim(), newCourseGoal.trim(), Number(newCourseProgress))
+    onAddCourse(newCourse.trim(), newCourseGoal.trim(), newCourseDeadline || null)
     setNewCourse("")
     setNewCourseGoal("")
-    setNewCourseProgress("0")
+    setNewCourseDeadline("")
     setShowAddCourse(false)
   }
 
   function submitLessons(courseId: number | string) {
-    const titles = (lessonDrafts[courseId] ?? "")
-      .split(/[\n,]/)
-      .map((title) => title.trim())
-      .filter(Boolean)
-    if (!titles.length) return
+    const titles = lessonPreviews[courseId] ?? parseLessonList(lessonDrafts[courseId] ?? "")
+    if (!titles.length) {
+      setLessonErrors((current) => ({ ...current, [courseId]: "Chưa nhận diện được lesson nào." }))
+      return
+    }
     onAddLessons(courseId, titles)
     setLessonDrafts((current) => ({ ...current, [courseId]: "" }))
+    setLessonPreviews((current) => ({ ...current, [courseId]: [] }))
+    setLessonErrors((current) => ({ ...current, [courseId]: "" }))
+  }
+
+  function updateLessonDraft(courseId: number | string, value: string) {
+    setLessonDrafts((current) => ({ ...current, [courseId]: value }))
+    setLessonPreviews((current) => ({ ...current, [courseId]: parseLessonList(value) }))
+    setLessonErrors((current) => ({ ...current, [courseId]: "" }))
+  }
+
+  async function handleLessonFile(courseId: number | string, file: File | undefined) {
+    if (!file) return
+    if (!/\.(txt|csv)$/i.test(file.name)) {
+      setLessonErrors((current) => ({ ...current, [courseId]: "Chỉ hỗ trợ file .txt hoặc .csv." }))
+      return
+    }
+    const content = await file.text()
+    updateLessonDraft(courseId, content)
+    if (!parseLessonList(content).length) {
+      setLessonErrors((current) => ({ ...current, [courseId]: "File không có lesson hợp lệ." }))
+    }
   }
 
   function toggleCourseLessons(courseId: number | string) {
@@ -1676,7 +1692,7 @@ function RoadmapView({
               submitCourse()
             }}
           >
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_100px]">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_180px]">
               <input
                 autoFocus
                 required
@@ -1694,13 +1710,10 @@ function RoadmapView({
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 dark:border-white/10 dark:bg-[#171921]"
               />
               <input
-                type="number"
-                min="0"
-                max="100"
-                value={newCourseProgress}
-                onChange={(event) => setNewCourseProgress(event.target.value)}
-                placeholder="Tiến độ %"
-                aria-label="Tiến độ %"
+                type="date"
+                value={newCourseDeadline}
+                onChange={(event) => setNewCourseDeadline(event.target.value)}
+                aria-label="Ngày đích"
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 dark:border-white/10 dark:bg-[#171921]"
               />
             </div>
@@ -1737,7 +1750,52 @@ function RoadmapView({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-semibold">{course.title}</p>
-                  <p className="mt-1 text-xs text-slate-400">{course.goal}</p>
+                  {editingDeadlines.has(course.id) || course.deadline ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <CalendarClock className="size-3.5 text-violet-500" />
+                      <input
+                        type="date"
+                        value={deadlineDrafts[course.id] ?? course.deadline ?? ""}
+                        onChange={(event) =>
+                          setDeadlineDrafts((current) => ({
+                            ...current,
+                            [course.id]: event.target.value,
+                          }))
+                        }
+                        aria-label={`Ngày đích cho ${course.title}`}
+                        className="h-7 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-600 outline-none focus:border-violet-400 dark:border-white/10 dark:bg-[#171921] dark:text-slate-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onUpdateDeadline(course.id, deadlineDrafts[course.id] || null)
+                          setEditingDeadlines((current) => {
+                            const next = new Set(current)
+                            next.delete(course.id)
+                            return next
+                          })
+                        }}
+                        className="text-[11px] font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-300"
+                      >
+                        Lưu
+                      </button>
+                      <span
+                        className={`text-[11px] font-semibold ${getRoadmapDeadlineState(course.deadline).kind === "overdue" ? "text-rose-500" : "text-violet-600 dark:text-violet-300"}`}
+                      >
+                        {getRoadmapDeadlineState(course.deadline).label}
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingDeadlines((current) => new Set(current).add(course.id))
+                      }
+                      className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-300"
+                    >
+                      <CalendarClock className="size-3.5" /> Thiết lập ngày đích
+                    </button>
+                  )}
                 </div>
                 <span className="text-sm font-bold text-violet-600 dark:text-violet-300">
                   {course.progress}%
@@ -1745,7 +1803,7 @@ function RoadmapView({
               </div>
               <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/8">
                 <div
-                  className="h-full rounded-full bg-violet-500"
+                  className="progress-fill progress-fill-learning h-full rounded-full"
                   style={{ width: `${course.progress}%` }}
                 />
               </div>
@@ -1767,7 +1825,7 @@ function RoadmapView({
                     <div>
                       <p className="text-sm font-semibold">Mục lục bài học</p>
                       <p className="mt-1 text-[11px] text-slate-400">
-                        Mỗi dòng hoặc dấu phẩy là một bài học
+                        Dán hoặc upload mục lục có đánh số để tự tách lesson
                       </p>
                     </div>
                     <span className="text-[11px] text-slate-400">{course.lessons.length} bài</span>
@@ -1797,26 +1855,45 @@ function RoadmapView({
                   <div className="mt-3 flex gap-2">
                     <textarea
                       value={lessonDrafts[course.id] ?? ""}
-                      onChange={(event) =>
-                        setLessonDrafts((current) => ({
-                          ...current,
-                          [course.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="Ví dụ: Bài 1 - Giới thiệu, Bài 2 - Thực hành"
+                      onChange={(event) => updateLessonDraft(course.id, event.target.value)}
+                      placeholder="Ví dụ: 1. Giới thiệu\n2. Thực hành\n3. Tổng kết"
                       aria-label={`Mục lục cho ${course.title}`}
                       rows={2}
                       className="min-w-0 flex-1 resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-violet-400 dark:border-white/10 dark:bg-[#171921]"
                     />
-                    <button
-                      type="button"
-                      onClick={() => submitLessons(course.id)}
-                      className="self-end rounded-lg bg-violet-600 p-2 text-white hover:bg-violet-700"
-                      aria-label={`Thêm bài học cho ${course.title}`}
-                    >
-                      <Plus className="size-4" />
-                    </button>
+                    <div className="flex self-end gap-2">
+                      <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-violet-200 p-2 text-violet-600 hover:bg-violet-50 dark:border-violet-500/20 dark:text-violet-300 dark:hover:bg-violet-500/10">
+                        <Upload className="size-4" />
+                        <span className="sr-only">Upload mục lục cho {course.title}</span>
+                        <input
+                          type="file"
+                          accept=".txt,.csv,text/plain,text/csv"
+                          className="sr-only"
+                          aria-label={`Upload mục lục cho ${course.title}`}
+                          onChange={(event) => {
+                            void handleLessonFile(course.id, event.target.files?.[0])
+                            event.currentTarget.value = ""
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => submitLessons(course.id)}
+                        className="rounded-lg bg-violet-600 p-2 text-white hover:bg-violet-700"
+                        aria-label={`Thêm bài học cho ${course.title}`}
+                      >
+                        <Plus className="size-4" />
+                      </button>
+                    </div>
                   </div>
+                  {(lessonPreviews[course.id]?.length ?? 0) > 0 && (
+                    <p className="mt-2 text-[11px] text-violet-600 dark:text-violet-300">
+                      Đã nhận diện {lessonPreviews[course.id]?.length} lesson. Nhấn nút + để thêm.
+                    </p>
+                  )}
+                  {lessonErrors[course.id] && (
+                    <p className="mt-2 text-[11px] text-rose-500">{lessonErrors[course.id]}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -2191,7 +2268,205 @@ function SubjectStat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function CalendarView({ onBack }: { onBack: () => void }) {
+function CalendarView({
+  events,
+  onEventsChange,
+  onBack,
+}: {
+  events: CalendarEvent[]
+  onEventsChange: (events: CalendarEvent[]) => void
+  onBack: () => void
+}) {
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [filter, setFilter] = useState("all")
+  const [view, setView] = useState<"all" | "week" | "month">("week")
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateKey(new Date()))
+  const [error, setError] = useState("")
+  const [googleStatus, setGoogleStatus] = useState<{
+    connected: boolean
+    lastSyncedAt: string | null
+    syncError: string | null
+    selectedCalendarIds: string[]
+    keywords: string[]
+    calendars: Array<{ id: string; summary?: string; primary?: boolean }>
+  }>({
+    connected: false,
+    lastSyncedAt: null,
+    syncError: null,
+    selectedCalendarIds: [],
+    keywords: [],
+    calendars: [],
+  })
+  const [form, setForm] = useState(() => emptyCalendarForm())
+
+  useEffect(() => {
+    void fetch("/api/calendar/google/status")
+      .then((response) => (response.ok ? response.json() : null))
+      .then(
+        (
+          data: {
+            connected?: boolean
+            lastSyncedAt?: string | null
+            syncError?: string | null
+            selectedCalendarIds?: string[]
+            keywords?: string[]
+          } | null,
+        ) => {
+          if (!data) return
+          setGoogleStatus({
+            connected: Boolean(data.connected),
+            lastSyncedAt: data.lastSyncedAt ?? null,
+            syncError: data.syncError ?? null,
+            selectedCalendarIds: data.selectedCalendarIds ?? [],
+            keywords: data.keywords ?? [],
+            calendars: [],
+          })
+          if (data.connected) {
+            void fetch("/api/calendar/google/calendars")
+              .then((response) => (response.ok ? response.json() : null))
+              .then(
+                (
+                  calendarData: {
+                    calendars?: Array<{ id: string; summary?: string; primary?: boolean }>
+                  } | null,
+                ) => {
+                  if (calendarData?.calendars)
+                    setGoogleStatus((current) => ({
+                      ...current,
+                      calendars: calendarData.calendars ?? [],
+                      selectedCalendarIds: current.selectedCalendarIds.length
+                        ? current.selectedCalendarIds
+                        : (calendarData.calendars ?? []).map((calendar) => calendar.id),
+                    }))
+                },
+              )
+              .catch(() => undefined)
+          }
+        },
+      )
+      .catch(() => undefined)
+  }, [])
+
+  const visibleEvents = useMemo(() => {
+    const now = new Date()
+    const end = new Date(now)
+    if (view === "week") end.setDate(end.getDate() + 7)
+    if (view === "month") end.setDate(end.getDate() + 31)
+    return events.filter((event) => {
+      const matchesType = filter === "all" || event.eventType === filter
+      const startsAt = new Date(event.startsAt)
+      return matchesType && (view === "all" || (startsAt >= now && startsAt <= end))
+    })
+  }, [events, filter, view])
+
+  const weekDays = useMemo(() => {
+    const now = new Date()
+    return getWeekDateKeys(now).map((key, index) => {
+      const date = new Date(now)
+      date.setHours(12, 0, 0, 0)
+      date.setDate(date.getDate() + index)
+      return {
+        key,
+        date,
+        events: events.filter(
+          (event) =>
+            getEventDateKey(event.startsAt) === key &&
+            (filter === "all" || event.eventType === filter),
+        ),
+      }
+    })
+  }, [events, filter])
+
+  const selectedDayEvents = useMemo(
+    () => weekDays.find((day) => day.key === selectedDate)?.events ?? [],
+    [selectedDate, weekDays],
+  )
+
+  function updateForm(field: keyof CalendarForm, value: string | boolean) {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function startCreate() {
+    setEditingId(null)
+    setForm(emptyCalendarForm())
+    setError("")
+    setShowForm(true)
+  }
+
+  function startEdit(event: CalendarEvent) {
+    setEditingId(event.id)
+    setForm({
+      title: event.title,
+      startsAt: event.allDay ? event.startsAt.slice(0, 10) : toDateTimeInput(event.startsAt),
+      endsAt: event.allDay ? event.endsAt.slice(0, 10) : toDateTimeInput(event.endsAt),
+      allDay: event.allDay,
+      location: event.location ?? "",
+      description: event.description ?? "",
+      eventType: event.eventType,
+      reminderMinutes: String(event.reminderMinutes),
+    })
+    setError("")
+    setShowForm(true)
+  }
+
+  async function saveEvent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError("")
+    const payload = {
+      ...form,
+      reminderMinutes: Number(form.reminderMinutes),
+    }
+    const response = await fetch(editingId ? `/api/calendar/${editingId}` : "/api/calendar", {
+      method: editingId ? "PATCH" : "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    const data = (await response.json()) as { event?: CalendarEvent; message?: string }
+    if (!response.ok || !data.event) {
+      setError(data.message ?? "Không thể lưu sự kiện")
+      return
+    }
+    const next = editingId
+      ? events.map((item) => (item.id === editingId ? data.event! : item))
+      : [...events, data.event]
+    onEventsChange(sortCalendarEvents(next))
+    setShowForm(false)
+    setEditingId(null)
+  }
+
+  async function deleteEvent(event: CalendarEvent) {
+    if (event.source === "google") return
+    const response = await fetch(`/api/calendar/${event.id}`, { method: "DELETE" })
+    if (response.ok) onEventsChange(events.filter((item) => item.id !== event.id))
+  }
+
+  async function syncGoogleCalendar() {
+    const response = await fetch("/api/calendar/google/sync", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        selectedCalendarIds: googleStatus.selectedCalendarIds,
+        keywords: googleStatus.keywords,
+      }),
+    })
+    const data = (await response.json()) as { message?: string }
+    if (!response.ok) {
+      setGoogleStatus((current) => ({ ...current, syncError: data.message ?? "Không thể đồng bộ" }))
+      return
+    }
+    const calendarResponse = await fetch("/api/calendar")
+    if (calendarResponse.ok) {
+      const calendarData = (await calendarResponse.json()) as { events?: CalendarEvent[] }
+      onEventsChange(sortCalendarEvents(calendarData.events ?? []))
+    }
+    setGoogleStatus((current) => ({
+      ...current,
+      lastSyncedAt: new Date().toISOString(),
+      syncError: null,
+    }))
+  }
+
   return (
     <div className="mx-auto max-w-[1000px] px-5 py-8 md:px-10 md:py-10">
       <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -2202,13 +2477,116 @@ function CalendarView({ onBack }: { onBack: () => void }) {
             Các mốc quan trọng và lịch học sắp tới của bạn.
           </p>
         </div>
-        <button
-          onClick={onBack}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-        >
-          <ArrowUpRight className="size-4 rotate-[225deg]" /> Về tổng quan
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (!googleStatus.connected) {
+                // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+                window.location.assign("/api/calendar/google/connect")
+              }
+            }}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+          >
+            <CalendarDays className="size-4" />
+            {googleStatus.connected ? "Đã kết nối Google" : "Kết nối Google Calendar"}
+          </button>
+          <button
+            type="button"
+            onClick={startCreate}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700"
+          >
+            <Plus className="size-4" /> Thêm sự kiện
+          </button>
+          <button
+            onClick={onBack}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+          >
+            <ArrowUpRight className="size-4 rotate-[225deg]" /> Về tổng quan
+          </button>
+        </div>
       </div>
+      {googleStatus.connected && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <span>
+            Google Calendar đang kết nối
+            {googleStatus.lastSyncedAt &&
+              ` · Đồng bộ lần cuối ${new Date(googleStatus.lastSyncedAt).toLocaleString("vi-VN")}`}
+            {googleStatus.syncError && ` · ${googleStatus.syncError}`}
+          </span>
+          <div className="flex gap-3">
+            <details className="relative">
+              <summary className="cursor-pointer font-semibold underline">Cài đặt lọc</summary>
+              <div className="absolute right-0 z-10 mt-2 w-72 rounded-xl border border-emerald-200 bg-white p-4 text-slate-700 shadow-xl dark:border-emerald-500/20 dark:bg-[#171921] dark:text-slate-200">
+                <p className="mb-2 font-semibold">Calendar cần theo dõi</p>
+                <div className="space-y-1">
+                  {googleStatus.calendars.map((calendar) => (
+                    <label key={calendar.id} className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={
+                          !googleStatus.selectedCalendarIds.length ||
+                          googleStatus.selectedCalendarIds.includes(calendar.id)
+                        }
+                        onChange={(event) =>
+                          setGoogleStatus((current) => ({
+                            ...current,
+                            selectedCalendarIds: event.target.checked
+                              ? [...new Set([...current.selectedCalendarIds, calendar.id])]
+                              : current.selectedCalendarIds.filter((id) => id !== calendar.id),
+                          }))
+                        }
+                      />
+                      {calendar.summary ?? calendar.id}
+                    </label>
+                  ))}
+                </div>
+                <label className="mt-3 block text-xs">
+                  Từ khóa (cách nhau bằng dấu phẩy)
+                  <input
+                    value={googleStatus.keywords.join(", ")}
+                    onChange={(event) =>
+                      setGoogleStatus((current) => ({
+                        ...current,
+                        keywords: event.target.value
+                          .split(",")
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      }))
+                    }
+                    className="mt-1 h-8 w-full rounded-md border border-slate-200 px-2 text-xs dark:border-white/10 dark:bg-[#11131a]"
+                  />
+                </label>
+              </div>
+            </details>
+            <button
+              type="button"
+              onClick={() => void syncGoogleCalendar()}
+              className="font-semibold underline"
+            >
+              Đồng bộ
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void fetch("/api/calendar/google/disconnect", { method: "POST" }).then(() =>
+                  setGoogleStatus({
+                    connected: false,
+                    lastSyncedAt: null,
+                    syncError: null,
+                    selectedCalendarIds: [],
+                    keywords: [],
+                    calendars: [],
+                  }),
+                )
+              }}
+              className="font-semibold underline"
+            >
+              Ngắt kết nối
+            </button>
+          </div>
+        </div>
+      )}
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/8 dark:bg-[#171921] md:p-6">
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -2217,30 +2595,388 @@ function CalendarView({ onBack }: { onBack: () => void }) {
           </div>
           <CalendarDays className="size-5 text-violet-500" />
         </div>
-        <div className="space-y-5">
-          <Event
-            day="22"
-            month="THÁNG 10"
-            title="Nộp bài tập lớn tuần 5"
-            meta="Lập trình Web · 23:59"
-            color="violet"
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-white/5">
+            {(["week", "month", "all"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setView(item)}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold ${view === item ? "bg-white text-violet-600 shadow-sm dark:bg-[#252936] dark:text-violet-300" : "text-slate-500"}`}
+              >
+                {item === "week" ? "7 ngày tới" : item === "month" ? "30 ngày tới" : "Tất cả"}
+              </button>
+            ))}
+          </div>
+          <select
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            aria-label="Lọc loại sự kiện"
+            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs dark:border-white/10 dark:bg-[#171921]"
+          >
+            <option value="all">Tất cả loại</option>
+            {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {view === "week" ? (
+          <>
+            <div className="grid grid-cols-7 gap-1.5 md:gap-2" aria-label="Chọn ngày trong tuần">
+              {weekDays.map((day) => {
+                const isSelected = day.key === selectedDate
+                const isToday = day.key === getLocalDateKey(new Date())
+                return (
+                  <button
+                    key={day.key}
+                    type="button"
+                    onClick={() => setSelectedDate(day.key)}
+                    aria-pressed={isSelected}
+                    className={`rounded-xl border px-1 py-2 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5A9C4] md:px-2 ${isSelected ? "border-[#F5A9C4] bg-[#FCE7EF]/35 text-[#63465A] dark:border-[#F5A9C4]/70 dark:bg-[#F5A9C4]/15 dark:text-pink-100" : "border-slate-200 hover:border-[#FCE7EF] hover:bg-slate-50 dark:border-white/10 dark:hover:border-pink-300/30 dark:hover:bg-white/5"}`}
+                  >
+                    <span className="block text-[10px] font-semibold uppercase text-slate-400">
+                      {day.date.toLocaleDateString("vi-VN", { weekday: "short" }).replace(".", "")}
+                    </span>
+                    <span
+                      className={`mt-1 block text-sm font-bold ${isToday ? "text-[#D76B96] dark:text-pink-200" : ""}`}
+                    >
+                      {day.date.getDate()}
+                    </span>
+                    <span
+                      className="mx-auto mt-1 block h-1 w-1 rounded-full bg-[#F5A9C4]"
+                      style={{ opacity: day.events.length ? 1 : 0 }}
+                    />
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-6">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    {new Date(`${selectedDate}T12:00:00`).toLocaleDateString("vi-VN", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    })}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {selectedDayEvents.length
+                      ? `${selectedDayEvents.length} sự kiện`
+                      : "Ngày trống để bạn tập trung"}
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#FCE7EF]/35 px-2.5 py-1 text-[10px] font-semibold text-[#63465A] dark:bg-[#F5A9C4]/15 dark:text-pink-100">
+                  Tuần này
+                </span>
+              </div>
+              <div className="space-y-3">
+                {selectedDayEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    className="relative border-l-2 border-[#FCE7EF] pl-4 dark:border-[#F5A9C4]/40"
+                  >
+                    <span className="absolute -left-[5px] top-5 size-2 rounded-full bg-[#F5A9C4] ring-4 ring-white dark:ring-[#171921]" />
+                    <CalendarEventRow
+                      event={event}
+                      onEdit={event.source === "local" ? () => startEdit(event) : undefined}
+                      onDelete={
+                        event.source === "local" ? () => void deleteEvent(event) : undefined
+                      }
+                    />
+                  </div>
+                ))}
+                {!selectedDayEvents.length && (
+                  <div className="rounded-xl border border-dashed border-slate-200 p-7 text-center dark:border-white/10">
+                    <CalendarDays className="mx-auto size-7 text-slate-300 dark:text-slate-600" />
+                    <p className="mt-2 text-sm font-semibold">Chưa có sự kiện trong ngày này</p>
+                    <button
+                      type="button"
+                      onClick={startCreate}
+                      className="mt-2 text-xs font-semibold text-[#D76B96] hover:underline dark:text-pink-200"
+                    >
+                      + Thêm sự kiện
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-5">
+            {visibleEvents.map((event) => (
+              <CalendarEventRow
+                key={event.id}
+                event={event}
+                onEdit={event.source === "local" ? () => startEdit(event) : undefined}
+                onDelete={event.source === "local" ? () => void deleteEvent(event) : undefined}
+              />
+            ))}
+            {!visibleEvents.length && (
+              <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center dark:border-white/10">
+                <CalendarDays className="mx-auto size-8 text-slate-300 dark:text-slate-600" />
+                <p className="mt-3 text-sm font-semibold">Chưa có sự kiện phù hợp</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Thêm sự kiện đầu tiên để theo dõi lịch học và deadline.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+      {showForm && (
+        <CalendarEventForm
+          form={form}
+          editing={Boolean(editingId)}
+          error={error}
+          onChange={updateForm}
+          onSubmit={saveEvent}
+          onClose={() => setShowForm(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+type CalendarForm = {
+  title: string
+  startsAt: string
+  endsAt: string
+  allDay: boolean
+  location: string
+  description: string
+  eventType: CalendarEvent["eventType"]
+  reminderMinutes: string
+}
+
+function toDateTimeInput(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  const pad = (number: number) => String(number).padStart(2, "0")
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function emptyCalendarForm(): CalendarForm {
+  const start = new Date()
+  start.setMinutes(0, 0, 0)
+  start.setHours(start.getHours() + 1)
+  const end = new Date(start)
+  end.setHours(end.getHours() + 1)
+  return {
+    title: "",
+    startsAt: toDateTimeInput(start.toISOString()),
+    endsAt: toDateTimeInput(end.toISOString()),
+    allDay: false,
+    location: "",
+    description: "",
+    eventType: "personal",
+    reminderMinutes: "30",
+  }
+}
+
+function CalendarEventRow({
+  event,
+  onEdit,
+  onDelete,
+}: {
+  event: CalendarEvent
+  onEdit?: () => void
+  onDelete?: () => void
+}) {
+  const colors = {
+    exam: "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300",
+    deadline: "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300",
+    event: "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300",
+    study: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300",
+    personal: "bg-slate-100 text-slate-600 dark:bg-white/8 dark:text-slate-300",
+  }
+  const startsAt = new Date(event.startsAt)
+  const day = startsAt.toLocaleDateString("vi-VN", { day: "2-digit" })
+  const month = startsAt.toLocaleDateString("vi-VN", { month: "short" }).toUpperCase()
+  const time = event.allDay
+    ? "Cả ngày"
+    : startsAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+  return (
+    <div className="group flex items-center gap-3">
+      <div
+        className={`flex h-11 w-12 shrink-0 flex-col items-center justify-center rounded-lg ${colors[event.eventType]}`}
+      >
+        <span className="text-base font-bold leading-4">{day}</span>
+        <span className="text-[8px] font-bold">{month}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{event.title}</p>
+        <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+          <Clock3 className="size-3" /> {EVENT_TYPE_LABELS[event.eventType]} · {time}
+          {event.source === "google" ? " · Google Calendar" : " · Self-Track"}
+        </p>
+        {(event.location || event.description) && (
+          <p className="mt-1 truncate text-[11px] text-slate-400">
+            {event.location ?? event.description}
+          </p>
+        )}
+      </div>
+      {(onEdit || onDelete) && (
+        <div className="flex gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-md px-2 py-1 text-[11px] font-semibold text-violet-600 hover:bg-violet-50 dark:text-violet-300"
+            >
+              Sửa
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="rounded-md px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-300"
+            >
+              Xoá
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CalendarEventForm({
+  form,
+  editing,
+  error,
+  onChange,
+  onSubmit,
+  onClose,
+}: {
+  form: CalendarForm
+  editing: boolean
+  error: string
+  onChange: (field: keyof CalendarForm, value: string | boolean) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/35 p-4 sm:items-center">
+      <form
+        onSubmit={onSubmit}
+        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-white/10 dark:bg-[#171921]"
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold">{editing ? "Sửa sự kiện" : "Thêm sự kiện"}</h2>
+            <p className="mt-1 text-xs text-slate-400">Điền thông tin giống Google Calendar.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng form sự kiện"
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <input
+            required
+            value={form.title}
+            onChange={(event) => onChange("title", event.target.value)}
+            placeholder="Tên sự kiện"
+            aria-label="Tên sự kiện"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400 dark:border-white/10 dark:bg-[#171921]"
           />
-          <Event
-            day="24"
-            month="THÁNG 10"
-            title="Kiểm tra giữa kỳ"
-            meta="Cấu trúc dữ liệu · 08:00"
-            color="rose"
+          <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <input
+              type="checkbox"
+              checked={form.allDay}
+              onChange={(event) => onChange("allDay", event.target.checked)}
+            />{" "}
+            Sự kiện cả ngày
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Bắt đầu
+              <input
+                required
+                type={form.allDay ? "date" : "datetime-local"}
+                value={form.startsAt}
+                onChange={(event) => onChange("startsAt", event.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-white/10 dark:bg-[#171921]"
+              />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Kết thúc
+              <input
+                required
+                type={form.allDay ? "date" : "datetime-local"}
+                value={form.endsAt}
+                onChange={(event) => onChange("endsAt", event.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-white/10 dark:bg-[#171921]"
+              />
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <select
+              value={form.eventType}
+              onChange={(event) => onChange("eventType", event.target.value)}
+              aria-label="Loại sự kiện"
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-white/10 dark:bg-[#171921]"
+            >
+              {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={form.reminderMinutes}
+              onChange={(event) => onChange("reminderMinutes", event.target.value)}
+              aria-label="Nhắc nhở"
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-white/10 dark:bg-[#171921]"
+            >
+              <option value="0">Không nhắc</option>
+              <option value="10">10 phút trước</option>
+              <option value="30">30 phút trước</option>
+              <option value="60">1 giờ trước</option>
+              <option value="1440">1 ngày trước</option>
+            </select>
+          </div>
+          <input
+            value={form.location}
+            onChange={(event) => onChange("location", event.target.value)}
+            placeholder="Địa điểm hoặc liên kết"
+            aria-label="Địa điểm"
+            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs dark:border-white/10 dark:bg-[#171921]"
           />
-          <Event
-            day="26"
-            month="THÁNG 10"
-            title="Buổi học IELTS"
-            meta="Speaking · 19:30"
-            color="sky"
+          <textarea
+            value={form.description}
+            onChange={(event) => onChange("description", event.target.value)}
+            placeholder="Mô tả"
+            aria-label="Mô tả"
+            rows={3}
+            className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-white/10 dark:bg-[#171921]"
           />
         </div>
-      </section>
+        {error && <p className="mt-3 text-xs text-rose-500">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5"
+          >
+            Huỷ
+          </button>
+          <button
+            type="submit"
+            className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700"
+          >
+            {editing ? "Lưu thay đổi" : "Thêm sự kiện"}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
@@ -2299,7 +3035,7 @@ function StreakCard({
               stroke="currentColor"
               strokeWidth="7"
               strokeLinecap="round"
-              className="text-[#F9A8BB]"
+              className="text-[#F5A9C4]"
               strokeDasharray={circumference}
               strokeDashoffset={circumference * (1 - progress)}
               transform="rotate(-90 40 40)"
@@ -2313,7 +3049,7 @@ function StreakCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold">Streak học tập</p>
-            <Flame className="size-4 text-[#F9A8BB] transition group-hover:scale-110" />
+            <StreakFlower streak={streak} />
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {streak > 0 ? `Streak hiện tại: ${streak} ngày` : "Bắt đầu lại hôm nay"}
@@ -2336,7 +3072,7 @@ function StreakCard({
           >
             <span className="text-[9px] text-slate-400">{day.label}</span>
             <span
-              className={`flex size-5 items-center justify-center rounded-full text-[9px] font-semibold ${day.completed ? "bg-[#F9A8BB] text-[#6f1d37]" : day.date === formatDateKey(anchor) ? "border border-[#F9A8BB] text-[#9b3f64] dark:text-[#F9A8BB]" : "bg-slate-100 text-slate-400 dark:bg-white/8"}`}
+              className={`flex size-5 items-center justify-center rounded-full text-[9px] font-semibold ${day.completed ? "bg-[#F5A9C4] text-[#6f1d37]" : day.date === formatDateKey(anchor) ? "border border-[#F5A9C4] text-[#a64f73] dark:text-[#F5A9C4]" : "bg-slate-100 text-slate-400 dark:bg-white/8"}`}
             >
               {day.day}
             </span>
@@ -2388,18 +3124,65 @@ function CompletedTaskRow({
   )
 }
 
-function TaskRow({ task, onToggle }: { task: Task; onToggle: (id: number | string) => void }) {
+export function TaskRow({
+  task,
+  onToggle,
+}: {
+  task: Task
+  onToggle: (id: number | string) => void
+}) {
+  const [celebrating, setCelebrating] = useState(false)
+  const completionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (completionTimeout.current) clearTimeout(completionTimeout.current)
+    },
+    [],
+  )
+
+  function celebrateCompletion() {
+    setCelebrating(true)
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+    completionTimeout.current = setTimeout(() => onToggle(task.id), reducedMotion ? 160 : 700)
+  }
+
   return (
     <div
       className={`group flex items-center gap-3 rounded-xl border border-transparent px-2 py-3 transition hover:border-slate-100 hover:bg-slate-50 dark:hover:border-white/5 dark:hover:bg-white/5 ${task.done ? "opacity-55" : ""}`}
     >
       <button
-        onClick={() => onToggle(task.id)}
-        className={`flex size-[18px] shrink-0 items-center justify-center rounded-full border ${task.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 text-transparent hover:border-violet-500 dark:border-slate-600"}`}
-        aria-label={task.done ? `Bỏ hoàn thành ${task.title}` : `Hoàn thành ${task.title}`}
+        onClick={() => (task.done ? onToggle(task.id) : celebrateCompletion())}
+        disabled={celebrating}
+        className={`relative flex size-[18px] shrink-0 items-center justify-center rounded-full border ${task.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 text-transparent hover:border-violet-500 dark:border-slate-600"} disabled:cursor-wait`}
+        aria-label={
+          celebrating
+            ? `Đang hoàn thành ${task.title}`
+            : task.done
+              ? `Bỏ hoàn thành ${task.title}`
+              : `Hoàn thành ${task.title}`
+        }
+        aria-busy={celebrating}
       >
-        {task.done ? <Check className="size-3" /> : <Circle className="size-2.5 fill-current" />}
+        {task.done ? (
+          <Check className="size-3" />
+        ) : celebrating ? (
+          <span className="task-flower-burst" aria-hidden="true">
+            <Flower2 className="task-flower-icon" />
+            <span className="task-flower-spark task-flower-spark-one" />
+            <span className="task-flower-spark task-flower-spark-two" />
+            <span className="task-flower-spark task-flower-spark-three" />
+            <span className="task-flower-spark task-flower-spark-four" />
+          </span>
+        ) : (
+          <Circle className="size-2.5 fill-current" />
+        )}
       </button>
+      {celebrating && (
+        <span className="sr-only" role="status">
+          Hoàn thành!
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <p className={`truncate text-sm font-medium ${task.done ? "line-through" : ""}`}>
           {task.title}
@@ -2428,18 +3211,6 @@ function formatTimer(seconds: number) {
   return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
 }
 
-function formatTaskDue(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "Chưa đặt thời gian"
-
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date)
-}
-
 function getGreeting(date: Date) {
   const hour = date.getHours()
   if (hour >= 5 && hour < 12) return "sáng"
@@ -2464,46 +3235,4 @@ function formatDateKey(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
   return `${date.getFullYear()}-${month}-${day}`
-}
-
-function clampProgress(value: number) {
-  if (Number.isNaN(value)) return 0
-  return Math.min(100, Math.max(0, value))
-}
-
-function Event({
-  day,
-  month,
-  title,
-  meta,
-  color,
-}: {
-  day: string
-  month: string
-  title: string
-  meta: string
-  color: "violet" | "rose" | "sky"
-}) {
-  const styles = {
-    violet: "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300",
-    rose: "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300",
-    sky: "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300",
-  }
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        className={`flex h-11 w-12 shrink-0 flex-col items-center justify-center rounded-lg ${styles[color]}`}
-      >
-        <span className="text-base font-bold leading-4">{day}</span>
-        <span className="text-[8px] font-bold">{month}</span>
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{title}</p>
-        <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
-          <Clock3 className="size-3" />
-          {meta}
-        </p>
-      </div>
-    </div>
-  )
 }

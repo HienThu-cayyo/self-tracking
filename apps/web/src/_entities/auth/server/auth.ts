@@ -93,7 +93,7 @@ function getLocalDateKey(date: Date) {
 
 function logDevelopmentEmail(kind: "verify" | "reset", email: string, url: string) {
   if (process.env.NODE_ENV !== "production") {
-    console.info(`[self.track auth ${kind}] ${email}: ${url}`)
+    console.info(`[Self-Track auth ${kind}] ${email}: ${url}`)
   }
 }
 
@@ -120,7 +120,7 @@ export async function registerUser(name: string, email: string, password: string
       {
         id: randomUUID(),
         userId,
-        title: "Khám phá self.track",
+        title: "Khám phá Self-Track",
         subject: "Cá nhân",
         due: "Chưa đặt thời gian",
         priority: "Vừa",
