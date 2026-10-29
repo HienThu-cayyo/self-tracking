@@ -5,15 +5,9 @@ import { promisify } from "node:util"
 
 import { and, eq, getDb, gt } from "@smart-base/database/server"
 import {
-  dailyFocusLogs,
   emailVerificationTokens,
-  focusTimerState,
-  lessons,
   passwordResetTokens,
-  roadmaps,
   sessions,
-  subjects,
-  tasks,
   users,
 } from "@smart-base/database/server"
 import { cookies } from "next/headers"
@@ -83,14 +77,6 @@ function getActionUrl(path: string, token: string) {
   return `${baseUrl}${path}?token=${encodeURIComponent(token)}`
 }
 
-function getLocalDateKey(date: Date) {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date)
-}
-
 function logDevelopmentEmail(kind: "verify" | "reset", email: string, url: string) {
   if (process.env.NODE_ENV !== "production") {
     console.info(`[self.track auth ${kind}] ${email}: ${url}`)
@@ -109,60 +95,18 @@ export async function registerUser(name: string, email: string, password: string
   if (existing[0]) throw new Error("Email này đã được đăng ký")
 
   const userId = randomUUID()
-  const now = new Date()
+  const demoVerification = process.env.NODE_ENV !== "production"
   const passwordHash = await hashPassword(password)
 
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(users)
-      .values({ id: userId, name: name.trim(), email: normalizedEmail, passwordHash })
-    await tx.insert(tasks).values([
-      {
-        id: randomUUID(),
-        userId,
-        title: "Khám phá self.track",
-        subject: "Cá nhân",
-        due: "Chưa đặt thời gian",
-        priority: "Vừa",
-      },
-      {
-        id: randomUUID(),
-        userId,
-        title: "Đặt mục tiêu học tập đầu tiên",
-        subject: "Cá nhân",
-        due: "Chưa đặt thời gian",
-        priority: "Thấp",
-      },
-    ])
-    const roadmapId = randomUUID()
-    await tx.insert(roadmaps).values({
-      id: roadmapId,
-      userId,
-      title: "Lộ trình đầu tiên",
-      goal: "Mục tiêu của bạn",
-      progress: 0,
-      featured: true,
-    })
-    await tx
-      .insert(lessons)
-      .values({ id: randomUUID(), roadmapId, title: "Thêm bài học đầu tiên", done: false })
-    await tx.insert(subjects).values({
-      id: randomUUID(),
-      userId,
-      name: "Môn học đầu tiên",
-      code: "NEW101",
-      credits: 3,
-      semester: "Học kỳ 1",
-      completed: false,
-    })
-    await tx
-      .insert(dailyFocusLogs)
-      .values({ id: randomUUID(), userId, date: getLocalDateKey(now), seconds: 0 })
-    await tx
-      .insert(focusTimerState)
-      .values({ userId, durationSeconds: 1500, accumulatedSeconds: 0 })
+  await db.insert(users).values({
+    id: userId,
+    name: name.trim(),
+    email: normalizedEmail,
+    passwordHash,
+    emailVerifiedAt: demoVerification ? new Date() : null,
   })
 
+  if (demoVerification) return { userId, verificationUrl: undefined }
   const token = await createVerificationToken(userId)
   logDevelopmentEmail("verify", normalizedEmail, getActionUrl("/verify-email", token))
   return { userId, verificationUrl: getActionUrl("/verify-email", token) }
@@ -175,7 +119,8 @@ export async function loginUser(email: string, password: string) {
   const user = result[0]
   if (!user || !(await verifyPassword(password, user.passwordHash)))
     throw new Error("Email hoặc mật khẩu không đúng")
-  if (!user.emailVerifiedAt) throw new Error("Vui lòng xác minh email trước khi đăng nhập")
+  if (!user.emailVerifiedAt && process.env.NODE_ENV === "production")
+    throw new Error("Vui lòng xác minh email trước khi đăng nhập")
 
   const sessionId = randomBytes(32).toString("hex")
   await db

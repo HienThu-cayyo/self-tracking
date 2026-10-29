@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import {
   advanceFocusTimer,
   calculateCurrentStreak,
@@ -61,12 +62,20 @@ import {
 } from "./dashboard-widgets"
 import { calculateLessonProgress, getRoadmapDeadlineState, parseLessonList } from "../model/roadmap"
 import { sortTasksByPriority } from "../model/tasks"
+import {
+  clearGuestSnapshot,
+  getGuestImportDismissedKey,
+  readGuestSnapshot,
+  writeGuestSnapshot,
+  type GuestSnapshot,
+} from "../model/guest"
 import { NotificationCenter } from "./notification-center"
 import {
   EVENT_TYPE_LABELS,
   getEventDateKey,
   getLocalDateKey,
   getWeekDateKeys,
+  isCalendarDateRangeValid,
   type CalendarEvent,
   sortCalendarEvents,
 } from "../model/calendar"
@@ -262,14 +271,6 @@ function getClockSnapshot() {
   return liveTimestamp
 }
 
-function syncDashboard(body: Record<string, unknown>) {
-  void fetch("/api/dashboard", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch(() => undefined)
-}
-
 export function DashboardPage() {
   const [activeNav, setActiveNav] = useState("Tổng quan")
   const theme = useSyncExternalStore(subscribeToTheme, getStoredTheme, () => "dark")
@@ -301,6 +302,12 @@ export function DashboardPage() {
   const [userName, setUserName] = useState("Minh Nguyễn")
   const [userEmail, setUserEmail] = useState("")
   const [userId, setUserId] = useState("")
+  const [authStatus, setAuthStatus] = useState<"checking" | "guest" | "authenticated">("checking")
+  const [guestHydrated, setGuestHydrated] = useState(false)
+  const [guestDirty, setGuestDirty] = useState(false)
+  const [guestImportSnapshot, setGuestImportSnapshot] = useState<GuestSnapshot | null>(null)
+  const [guestImporting, setGuestImporting] = useState(false)
+  const [guestImportError, setGuestImportError] = useState("")
   const [summary, setSummary] = useState<DashboardSummary>({
     ...EMPTY_DASHBOARD_SUMMARY,
     completedTasks: initialTasks.filter((task) => task.done).length,
@@ -310,17 +317,55 @@ export function DashboardPage() {
 
   useEffect(() => {
     void fetch("/api/auth/me")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { user?: { id?: string; name?: string; email?: string } } | null) => {
-        if (!data?.user) return
+      .then(async (response) => ({
+        authenticated: response.ok,
+        data: response.ok
+          ? ((await response.json()) as { user?: { id?: string; name?: string; email?: string } })
+          : null,
+      }))
+      .then(({ authenticated, data }) => {
+        if (!authenticated || !data?.user) {
+          setAuthStatus("guest")
+          return
+        }
         if (data.user.id) setUserId(data.user.id)
         if (data.user.name) setUserName(data.user.name)
         if (data.user.email) setUserEmail(data.user.email)
+        setAuthStatus("authenticated")
       })
-      .catch(() => undefined)
+      .catch(() => setAuthStatus("guest"))
   }, [])
 
   useEffect(() => {
+    if (authStatus === "checking") return
+    if (authStatus === "guest") {
+      const snapshot = readGuestSnapshot()
+      if (snapshot) {
+        queueMicrotask(() => {
+          setTasks(snapshot.tasks)
+          setCompletedTasks(snapshot.completedTasks)
+          setCourses(snapshot.courses)
+          setSubjects(snapshot.subjects)
+          setCalendarEvents(sortCalendarEvents(snapshot.events))
+          setSummary(snapshot.summary)
+          setGuestDirty(snapshot.dirty)
+          setGuestHydrated(true)
+        })
+      } else {
+        queueMicrotask(() => setGuestHydrated(true))
+      }
+      return
+    }
+
+    queueMicrotask(() => {
+      setGuestHydrated(false)
+      setTasks([])
+      setCompletedTasks([])
+      setCourses([])
+      setSubjects([])
+      setCalendarEvents([])
+      setSummary(EMPTY_DASHBOARD_SUMMARY)
+    })
     void fetch("/api/dashboard")
       .then((response) => (response.ok ? response.json() : null))
       .then(
@@ -377,7 +422,85 @@ export function DashboardPage() {
         },
       )
       .catch(() => undefined)
-  }, [])
+  }, [authStatus])
+
+  useEffect(() => {
+    if (authStatus !== "guest" || !guestHydrated) return
+    writeGuestSnapshot({
+      version: 1,
+      dirty: guestDirty || focusLogs.length > 0 || Boolean(focusTimer),
+      tasks,
+      completedTasks,
+      courses,
+      subjects,
+      events: calendarEvents,
+      summary,
+      focusLogs,
+      focusTimer,
+    })
+  }, [
+    authStatus,
+    guestHydrated,
+    guestDirty,
+    focusLogs,
+    focusTimer,
+    tasks,
+    completedTasks,
+    courses,
+    subjects,
+    calendarEvents,
+    summary,
+  ])
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !userId) return
+    const snapshot = readGuestSnapshot()
+    const dismissed = window.localStorage.getItem(getGuestImportDismissedKey(userId)) === "true"
+    if (snapshot?.dirty && !dismissed) {
+      queueMicrotask(() => setGuestImportSnapshot(snapshot))
+    }
+  }, [authStatus, userId])
+
+  const syncDashboard = (body: Record<string, unknown>) => {
+    if (authStatus !== "authenticated") return
+    void fetch("/api/dashboard", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => undefined)
+  }
+
+  function markGuestDirty() {
+    if (authStatus === "guest") setGuestDirty(true)
+  }
+
+  async function importGuestData() {
+    if (!guestImportSnapshot || authStatus !== "authenticated") return
+    setGuestImporting(true)
+    setGuestImportError("")
+    try {
+      const response = await fetch("/api/dashboard/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(guestImportSnapshot),
+      })
+      const data = (await response.json()) as { message?: string }
+      if (!response.ok) throw new Error(data.message ?? "Không thể lưu dữ liệu dùng thử")
+      clearGuestSnapshot()
+      window.localStorage.removeItem(getGuestImportDismissedKey(userId))
+      setGuestImportSnapshot(null)
+      window.location.reload()
+    } catch (error) {
+      setGuestImportError(error instanceof Error ? error.message : "Không thể lưu dữ liệu dùng thử")
+    } finally {
+      setGuestImporting(false)
+    }
+  }
+
+  function dismissGuestImport() {
+    if (userId) window.localStorage.setItem(getGuestImportDismissedKey(userId), "true")
+    setGuestImportSnapshot(null)
+  }
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
 
@@ -432,6 +555,7 @@ export function DashboardPage() {
       { ...taskToToggle, done: true },
       ...current.filter((item) => item.id !== id),
     ])
+    markGuestDirty()
     syncDashboard({ action: "complete-task", id })
   }
 
@@ -448,6 +572,7 @@ export function DashboardPage() {
       return next
     })
     setCompletedTasks((current) => current.filter((task) => task.id !== undoTask.task.id))
+    markGuestDirty()
     syncDashboard({ action: "restore-task", id: undoTask.task.id })
     setUndoTask(null)
   }
@@ -461,6 +586,7 @@ export function DashboardPage() {
       ...current,
       completedTasks: Math.max(0, current.completedTasks - 1),
     }))
+    markGuestDirty()
     syncDashboard({ action: "restore-task", id })
   }
 
@@ -473,6 +599,7 @@ export function DashboardPage() {
       completedTasks: Math.max(0, current.completedTasks - 1),
       totalTasks: Math.max(0, current.totalTasks - 1),
     }))
+    markGuestDirty()
     syncDashboard({ action: "delete-task", id })
   }
 
@@ -490,6 +617,7 @@ export function DashboardPage() {
       },
       ...current,
     ])
+    markGuestDirty()
     syncDashboard({
       action: "create-task",
       title: title.trim(),
@@ -519,6 +647,7 @@ export function DashboardPage() {
         lessons: [],
       },
     ])
+    markGuestDirty()
     syncDashboard({
       action: "create-course",
       title: newCourse.trim(),
@@ -543,6 +672,7 @@ export function DashboardPage() {
         lessons: [],
       },
     ])
+    markGuestDirty()
     syncDashboard({
       action: "create-course",
       title,
@@ -555,6 +685,7 @@ export function DashboardPage() {
     setCourses((current) =>
       current.map((course) => (course.id === courseId ? { ...course, deadline } : course)),
     )
+    markGuestDirty()
     syncDashboard({ action: "update-roadmap-deadline", roadmapId: courseId, deadline })
   }
 
@@ -564,16 +695,19 @@ export function DashboardPage() {
         subject.id === id ? { ...subject, completed: !subject.completed } : subject,
       ),
     )
+    markGuestDirty()
     syncDashboard({ action: "toggle-subject", subjectId: id })
   }
 
   function addSubject(subject: Omit<Subject, "id" | "completed">) {
     setSubjects((current) => [...current, { ...subject, id: Date.now(), completed: false }])
+    markGuestDirty()
     syncDashboard({ action: "create-subject", ...subject })
   }
 
   function updateGpa(currentGpa: number | null, targetGpa: number | null) {
     setSummary((current) => ({ ...current, currentGpa, targetGpa }))
+    markGuestDirty()
     syncDashboard({ action: "update-gpa", currentGpa, targetGpa })
   }
 
@@ -589,6 +723,7 @@ export function DashboardPage() {
       startedAt: null,
       lastAccountedAt: null,
     })
+    markGuestDirty()
   }
 
   function startTaskTimer(taskId: number | string | null) {
@@ -604,14 +739,17 @@ export function DashboardPage() {
       startedAt: now,
       lastAccountedAt: now,
     })
+    markGuestDirty()
   }
 
   function pauseTaskTimer() {
     pauseFocusTimer()
+    markGuestDirty()
   }
 
   function resetTaskTimer() {
     setFocusTimer(null)
+    markGuestDirty()
   }
 
   function toggleLesson(courseId: number | string, lessonId: number | string) {
@@ -624,6 +762,7 @@ export function DashboardPage() {
         return { ...course, lessons, progress: calculateLessonProgress(lessons, course.progress) }
       }),
     )
+    markGuestDirty()
     syncDashboard({ action: "toggle-lesson", roadmapId: courseId, lessonId })
   }
 
@@ -642,6 +781,7 @@ export function DashboardPage() {
         return { ...course, lessons, progress: calculateLessonProgress(lessons, course.progress) }
       }),
     )
+    markGuestDirty()
     syncDashboard({ action: "add-lessons", roadmapId: courseId, titles })
   }
 
@@ -721,23 +861,36 @@ export function DashboardPage() {
           </div>
           <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-5 dark:border-white/8">
             <div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-300 to-rose-400 text-xs font-bold text-white">
-              MN
+              {authStatus === "guest" ? "G" : "MN"}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{userName}</p>
-              <p className="truncate text-xs text-slate-400">{userEmail || "Sinh viên"}</p>
+              <p className="truncate text-sm font-semibold">
+                {authStatus === "guest" ? "Chế độ dùng thử" : userName}
+              </p>
+              <p className="truncate text-xs text-slate-400">
+                {authStatus === "guest" ? "Lưu trên thiết bị này" : userEmail || "Sinh viên"}
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void logout()}
-              disabled={isLoggingOut}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-wait disabled:opacity-60 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
-              aria-label="Đăng xuất"
-              title="Đăng xuất"
-            >
-              <LogOut className="size-4" />
-              <span>{isLoggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</span>
-            </button>
+            {authStatus === "guest" ? (
+              <Link
+                href="/login"
+                className="dashboard-focus ml-auto rounded-lg px-2 py-1.5 text-xs font-semibold text-[#D76B96] hover:bg-[#FCE7EF] dark:hover:bg-white/5"
+              >
+                Đăng nhập
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void logout()}
+                disabled={isLoggingOut}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-wait disabled:opacity-60 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
+                aria-label="Đăng xuất"
+                title="Đăng xuất"
+              >
+                <LogOut className="size-4" />
+                <span>{isLoggingOut ? "Đang đăng xuất…" : "Đăng xuất"}</span>
+              </button>
+            )}
           </div>
         </aside>
 
@@ -792,6 +945,18 @@ export function DashboardPage() {
             </div>
           </header>
 
+          {authStatus === "guest" && (
+            <div className="mx-auto mt-4 flex max-w-[1380px] items-center justify-between gap-3 rounded-xl border border-[#F5A9C4]/45 bg-[#FCE7EF]/55 px-4 py-3 text-xs text-[#63465A] shadow-sm dark:border-[#F5A9C4]/25 dark:bg-[#F5A9C4]/10 dark:text-[#FFF9FB] md:mx-10">
+              <span>Bạn đang dùng thử — dữ liệu hiện chỉ lưu trên thiết bị này.</span>
+              <Link
+                href="/register"
+                className="dashboard-focus shrink-0 rounded-lg bg-[#F5A9C4] px-3 py-1.5 font-semibold text-[#63465A] transition hover:bg-[#D76B96] hover:text-white"
+              >
+                Tạo tài khoản
+              </Link>
+            </div>
+          )}
+
           {activeNav === "Việc cần làm" ? (
             <TaskListView
               tasks={orderedTasks}
@@ -833,6 +998,7 @@ export function DashboardPage() {
               events={calendarEvents}
               onEventsChange={setCalendarEvents}
               onBack={() => setActiveNav("Tổng quan")}
+              guest={authStatus === "guest"}
             />
           ) : (
             <div className="mx-auto max-w-[1380px] px-5 py-8 md:px-10 md:py-10">
@@ -1221,6 +1387,52 @@ export function DashboardPage() {
           >
             Hoàn tác
           </button>
+        </div>
+      )}
+      {guestImportSnapshot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#63465A]/35 p-4 backdrop-blur-sm">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="guest-import-title"
+            className="dashboard-surface w-full max-w-md p-6"
+          >
+            <h2
+              id="guest-import-title"
+              className="text-lg font-bold text-[#63465A] dark:text-[#FFF9FB]"
+            >
+              Lưu dữ liệu dùng thử?
+            </h2>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
+              Self-Track có thể gộp các task, lộ trình, môn học, lịch và timer bạn đã tạo vào tài
+              khoản này.
+            </p>
+            {guestImportError && (
+              <p
+                role="alert"
+                className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-300"
+              >
+                {guestImportError}
+              </p>
+            )}
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={dismissGuestImport}
+                className="dashboard-secondary-button dashboard-focus rounded-lg px-3 py-2 text-sm font-semibold"
+              >
+                Bỏ qua
+              </button>
+              <button
+                type="button"
+                onClick={() => void importGuestData()}
+                disabled={guestImporting}
+                className="dashboard-primary-button dashboard-focus rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-60"
+              >
+                {guestImporting ? "Đang lưu…" : "Lưu vào tài khoản"}
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </main>
@@ -2277,10 +2489,12 @@ function CalendarView({
   events,
   onEventsChange,
   onBack,
+  guest,
 }: {
   events: CalendarEvent[]
   onEventsChange: (events: CalendarEvent[]) => void
   onBack: () => void
+  guest: boolean
 }) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -2306,6 +2520,7 @@ function CalendarView({
   const [form, setForm] = useState(() => emptyCalendarForm())
 
   useEffect(() => {
+    if (guest) return
     void fetch("/api/calendar/google/status")
       .then((response) => (response.ok ? response.json() : null))
       .then(
@@ -2351,7 +2566,7 @@ function CalendarView({
         },
       )
       .catch(() => undefined)
-  }, [])
+  }, [guest])
 
   const visibleEvents = useMemo(() => {
     const now = new Date()
@@ -2422,6 +2637,40 @@ function CalendarView({
       ...form,
       reminderMinutes: Number(form.reminderMinutes),
     }
+    if (guest) {
+      if (
+        !form.title.trim() ||
+        !isCalendarDateRangeValid(form.startsAt, form.endsAt, form.allDay)
+      ) {
+        setError("Vui lòng nhập tiêu đề và khoảng thời gian hợp lệ")
+        return
+      }
+      const startsAt = form.allDay
+        ? `${form.startsAt}T00:00:00`
+        : new Date(form.startsAt).toISOString()
+      const endsAt = form.allDay ? `${form.endsAt}T23:59:59` : new Date(form.endsAt).toISOString()
+      const localEvent: CalendarEvent = {
+        id: editingId ?? `guest-event-${Date.now()}`,
+        title: form.title.trim(),
+        startsAt,
+        endsAt,
+        allDay: form.allDay,
+        location: form.location.trim() || null,
+        description: form.description.trim() || null,
+        eventType: form.eventType,
+        reminderMinutes: Number(form.reminderMinutes),
+        source: "local",
+        externalId: null,
+        sourceCalendarId: null,
+      }
+      const next = editingId
+        ? events.map((item) => (item.id === editingId ? localEvent : item))
+        : [...events, localEvent]
+      onEventsChange(sortCalendarEvents(next))
+      setShowForm(false)
+      setEditingId(null)
+      return
+    }
     const response = await fetch(editingId ? `/api/calendar/${editingId}` : "/api/calendar", {
       method: editingId ? "PATCH" : "POST",
       headers: { "content-type": "application/json" },
@@ -2442,11 +2691,16 @@ function CalendarView({
 
   async function deleteEvent(event: CalendarEvent) {
     if (event.source === "google") return
+    if (guest) {
+      onEventsChange(events.filter((item) => item.id !== event.id))
+      return
+    }
     const response = await fetch(`/api/calendar/${event.id}`, { method: "DELETE" })
     if (response.ok) onEventsChange(events.filter((item) => item.id !== event.id))
   }
 
   async function syncGoogleCalendar() {
+    if (guest) return
     const response = await fetch("/api/calendar/google/sync", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -2485,16 +2739,21 @@ function CalendarView({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            disabled={guest}
             onClick={() => {
               if (!googleStatus.connected) {
                 // eslint-disable-next-line @next/next/no-location-assign-relative-destination
                 window.location.assign("/api/calendar/google/connect")
               }
             }}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
           >
             <CalendarDays className="size-4" />
-            {googleStatus.connected ? "Đã kết nối Google" : "Kết nối Google Calendar"}
+            {guest
+              ? "Cần tài khoản để kết nối"
+              : googleStatus.connected
+                ? "Đã kết nối Google"
+                : "Kết nối Google Calendar"}
           </button>
           <button
             type="button"

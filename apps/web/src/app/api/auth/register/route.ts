@@ -12,7 +12,10 @@ export async function POST(request: Request) {
     )
     return NextResponse.json(
       {
-        message: "Tài khoản đã được tạo. Hãy xác minh email để đăng nhập.",
+        message:
+          process.env.NODE_ENV === "production"
+            ? "Tài khoản đã được tạo. Hãy xác minh email để đăng nhập."
+            : "Tài khoản đã được tạo. Bạn có thể đăng nhập ngay trong bản demo.",
         verificationUrl: process.env.NODE_ENV === "production" ? undefined : result.verificationUrl,
       },
       { status: 201 },

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 
 import { getCurrentUser } from "@/_entities/auth/index.server"
+import { parseEventBody } from "@/_entities/calendar/index.server"
 import { and, calendarEvents, eq, getDb } from "@smart-base/database/server"
-import { parseEventBody } from "../route"
 
 type Context = { params: Promise<{ id: string }> }
 

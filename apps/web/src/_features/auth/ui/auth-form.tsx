@@ -157,6 +157,12 @@ export function AuthShell({
           </div>
           <h1 className="text-2xl font-bold">{title}</h1>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
+          <Link
+            href="/"
+            className="dashboard-focus mt-4 inline-flex rounded-lg px-3 py-1.5 text-sm font-semibold text-[#D76B96] transition hover:bg-[#FCE7EF] dark:hover:bg-white/5"
+          >
+            Dùng thử ngay
+          </Link>
         </div>
         {children}
       </section>

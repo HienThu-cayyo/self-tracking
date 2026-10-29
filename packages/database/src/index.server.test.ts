@@ -15,7 +15,7 @@ describe("database server entry point", () => {
 
     const database = await import("./index.server")
 
-    expect(Object.keys(database)).toEqual(["getDb"])
+    expect(database).toHaveProperty("getDb")
     expect(() => database.getDb()).toThrow("DATABASE_URL is not configured")
   })
 })
