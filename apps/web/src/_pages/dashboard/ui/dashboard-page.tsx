@@ -659,21 +659,26 @@ export function DashboardPage() {
         : `Bạn đã có ${weeklySessions} ngày học trong tuần này — thêm một phiên nữa để tiến gần mục tiêu.`
 
   return (
-    <main className="min-h-dvh bg-[#fbf8f9] text-slate-900 dark:bg-[#11131a] dark:text-slate-100">
+    <main className="dashboard-app min-h-dvh bg-[#fbf8f9] text-slate-900 dark:bg-[#11131a] dark:text-slate-100">
       <div className="flex min-h-dvh">
         <aside
           className={`${showMobileNav ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} fixed inset-y-0 left-0 z-30 flex w-[252px] flex-col border-r border-slate-200 bg-white px-5 py-6 transition-transform dark:border-white/8 dark:bg-[#171921]`}
         >
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2.5">
-              <Image
-                src="/brand/self-track-horizontal.png"
-                alt="Self-Track"
-                width={966}
-                height={254}
-                priority
-                className="h-auto w-[148px]"
-              />
+              <span className="brand-mascot-frame flex size-10 items-center justify-center rounded-xl bg-[#FCE7EF] p-1 dark:bg-[#63465A]/45">
+                <Image
+                  src="/brand/self-track-mascot.png"
+                  alt="Mascot Self-Track"
+                  width={72}
+                  height={59}
+                  priority
+                  className="h-full w-full object-contain"
+                />
+              </span>
+              <span className="text-lg font-bold tracking-tight text-[#63465A] dark:text-[#FFF9FB]">
+                self<span className="text-[#D76B96]">.</span>track
+              </span>
             </div>
             <button
               className="lg:hidden"

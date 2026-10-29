@@ -73,6 +73,9 @@
   --streak-flower-halo: rgb(215 107 150 / 0.2);
   --dashboard-surface: #fff9fb;
   --dashboard-surface-subtle: #fce7ef;
+  --surface-strong: #ffffff;
+  --text-primary: #3f2a38;
+  --text-secondary: #63465a;
   --dashboard-border: #ead4de;
   --dashboard-muted: #64748b;
   --background: oklch(1 0 0);
@@ -81,28 +84,28 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.45 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --primary: #f5a9c4;
+  --primary-foreground: #63465a;
+  --secondary: #fce7ef;
+  --secondary-foreground: #63465a;
+  --muted: #fce7ef;
+  --muted-foreground: #806e79;
+  --accent: #fce7ef;
+  --accent-foreground: #63465a;
   --destructive: oklch(0.58 0.22 27.5);
   --positive: oklch(0.53 0.15 150);
   --negative: var(--destructive);
-  --border: oklch(0.9 0 0);
-  --input: oklch(0.9 0 0);
-  --ring: oklch(0.65 0 0);
+  --border: #ead4de;
+  --input: #ead4de;
+  --ring: #d76b96;
   --chart-1: oklch(0.62 0.19 260);
   --chart-2: oklch(0.6 0.13 165);
   --chart-3: oklch(0.4 0.08 227);
   --chart-4: oklch(0.83 0.18 85);
   --chart-5: oklch(0.77 0.18 70);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar: #fff9fb;
+  --sidebar-foreground: #3f2a38;
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--accent);
@@ -131,6 +134,9 @@
   --streak-flower-halo: rgb(245 169 196 / 0.28);
   --dashboard-surface: #1b171b;
   --dashboard-surface-subtle: #241d23;
+  --surface-strong: #2a2228;
+  --text-primary: #fff9fb;
+  --text-secondary: #fce7ef;
   --dashboard-border: rgb(255 255 255 / 0.1);
   --dashboard-muted: #a1a1aa;
   --background: oklch(0.145 0 0);
@@ -139,27 +145,27 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --primary: #f5a9c4;
+  --primary-foreground: #63465a;
+  --secondary: rgb(252 231 239 / 0.12);
+  --secondary-foreground: #fff9fb;
+  --muted: rgb(252 231 239 / 0.1);
+  --muted-foreground: #b7aab2;
+  --accent: rgb(252 231 239 / 0.12);
+  --accent-foreground: #fff9fb;
   --destructive: oklch(0.704 0.191 22.216);
   --positive: oklch(0.72 0.15 150);
   --negative: var(--destructive);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: rgb(252 231 239 / 0.16);
+  --input: rgb(252 231 239 / 0.18);
+  --ring: #f5a9c4;
   --chart-1: oklch(0.49 0.24 264);
   --chart-2: oklch(0.7 0.16 162);
   --chart-3: oklch(0.77 0.18 70);
   --chart-4: oklch(0.63 0.26 304);
   --chart-5: oklch(0.65 0.24 16);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar: #1b171b;
+  --sidebar-foreground: #fff9fb;
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--accent);
@@ -251,6 +257,61 @@
 
   .dashboard-text-action:hover {
     color: color-mix(in srgb, var(--brand-foreground) 78%, #000000);
+  }
+
+  .auth-shell {
+    background:
+      radial-gradient(
+        circle at top,
+        color-mix(in srgb, var(--brand-blush) 70%, transparent),
+        transparent 38%
+      ),
+      var(--brand-warm-white);
+  }
+
+  .auth-card {
+    background-color: var(--surface-strong);
+    border-color: var(--dashboard-border);
+    color: var(--text-primary);
+    box-shadow: 0 20px 50px rgb(99 70 90 / 0.12);
+  }
+
+  .auth-input {
+    background-color: var(--surface-strong);
+    border-color: var(--dashboard-border);
+    color: var(--text-primary);
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      background-color 160ms ease;
+  }
+
+  .auth-input:focus-visible {
+    border-color: var(--brand-signature);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 28%, transparent);
+  }
+
+  .auth-primary-button {
+    color: var(--brand-ink);
+    box-shadow: 0 8px 18px rgb(215 107 150 / 0.18);
+  }
+
+  .auth-primary-button:hover:not(:disabled) {
+    background-color: var(--brand-signature);
+    color: #fff9fb;
+    box-shadow: 0 10px 22px rgb(215 107 150 / 0.24);
+    transform: translateY(-1px);
+  }
+
+  .auth-primary-button:focus-visible {
+    outline: 2px solid var(--brand-signature);
+    outline-offset: 3px;
+  }
+
+  .brand-mascot-frame {
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: 0 6px 16px rgb(215 107 150 / 0.12);
   }
 
   .progress-fill {
@@ -454,6 +515,145 @@
 }
 
 @layer utilities {
+  /* Compatibility layer for the existing dashboard vocabulary. It keeps the
+     current component markup readable while moving its visual language to the
+     shared palette. */
+  .dashboard-app {
+    --legacy-surface: var(--dashboard-surface);
+    --legacy-surface-subtle: var(--dashboard-surface-subtle);
+  }
+
+  .dashboard-app [class~="bg-[#fbf8f9]"] {
+    background-color: var(--background) !important;
+  }
+
+  .dashboard-app [class~="dark:bg-[#11131a]"] {
+    background-color: var(--background) !important;
+  }
+
+  .dashboard-app [class~="bg-[#fffdfd]/85"] {
+    background-color: color-mix(in srgb, var(--dashboard-surface) 88%, transparent) !important;
+  }
+
+  .dashboard-app [class~="bg-white"],
+  .dashboard-app [class~="bg-white/70"] {
+    background-color: var(--surface-strong) !important;
+  }
+
+  .dashboard-app [class~="bg-slate-50"],
+  .dashboard-app [class~="bg-slate-100"] {
+    background-color: var(--dashboard-surface-subtle) !important;
+  }
+
+  .dashboard-app [class~="text-slate-900"],
+  .dashboard-app [class~="text-slate-700"],
+  .dashboard-app [class~="text-slate-600"] {
+    color: var(--text-primary) !important;
+  }
+
+  .dashboard-app [class~="text-slate-500"],
+  .dashboard-app [class~="text-slate-400"] {
+    color: var(--dashboard-muted) !important;
+  }
+
+  .dashboard-app [class~="border-slate-100"],
+  .dashboard-app [class~="border-slate-200"],
+  .dashboard-app [class~="border-slate-300"] {
+    border-color: var(--dashboard-border) !important;
+  }
+
+  .dashboard-app [class~="hover:bg-white"]:hover,
+  .dashboard-app [class~="hover:bg-slate-50"]:hover,
+  .dashboard-app [class~="hover:bg-slate-100"]:hover {
+    background-color: var(--brand-blush) !important;
+  }
+
+  .dark .dashboard-app [class~="dark:bg-[#171921]"],
+  .dark .dashboard-app [class~="dark:bg-[#252936]"],
+  .dark .dashboard-app [class~="dark:bg-[#11131a]"] {
+    background-color: var(--dashboard-surface) !important;
+  }
+
+  .dark .dashboard-app [class~="dark:bg-white/5"],
+  .dark .dashboard-app [class~="dark:bg-white/8"],
+  .dark .dashboard-app [class~="dark:bg-white/10"] {
+    background-color: color-mix(in srgb, var(--brand-blush) 10%, transparent) !important;
+  }
+
+  .dark .dashboard-app [class~="dark:text-white"],
+  .dark .dashboard-app [class~="dark:text-slate-100"] {
+    color: var(--text-primary) !important;
+  }
+
+  .dark .dashboard-app [class~="dark:text-slate-200"],
+  .dark .dashboard-app [class~="dark:text-slate-300"],
+  .dark .dashboard-app [class~="dark:text-slate-400"] {
+    color: var(--dashboard-muted) !important;
+  }
+
+  .dark .dashboard-app [class~="dark:border-white/5"],
+  .dark .dashboard-app [class~="dark:border-white/8"],
+  .dark .dashboard-app [class~="dark:border-white/10"],
+  .dark .dashboard-app [class~="dark:border-white/20"] {
+    border-color: var(--dashboard-border) !important;
+  }
+
+  .dashboard-app [class~="shadow-violet-600/20"] {
+    --tw-shadow-color: color-mix(in srgb, var(--brand-signature) 24%, transparent) !important;
+  }
+
+  .dashboard-app [class~="bg-violet-600"],
+  .dashboard-app [class~="bg-violet-700"] {
+    color: var(--brand-ink) !important;
+  }
+
+  .dashboard-app [class~="text-violet-600"],
+  .dashboard-app [class~="text-violet-700"] {
+    color: var(--brand-signature) !important;
+  }
+
+  .dashboard-app [class~="border-violet-200"],
+  .dashboard-app [class~="border-violet-300"] {
+    border-color: color-mix(
+      in srgb,
+      var(--brand-signature) 42%,
+      var(--dashboard-border)
+    ) !important;
+  }
+
+  .dashboard-app [class~="focus:border-violet-400"]:focus,
+  .dashboard-app [class~="focus:border-violet-500"]:focus {
+    border-color: var(--brand-signature) !important;
+  }
+
+  .dashboard-app [class~="focus:ring-[#F5A9C4]/20"]:focus {
+    --tw-ring-color: color-mix(in srgb, var(--brand) 30%, transparent) !important;
+  }
+
+  .auth-shell [class~="text-slate-700"],
+  .auth-shell [class~="text-slate-900"] {
+    color: var(--text-primary) !important;
+  }
+
+  .auth-shell [class~="text-slate-500"],
+  .auth-shell [class~="text-slate-400"] {
+    color: var(--dashboard-muted) !important;
+  }
+
+  .auth-shell [class~="bg-white"] {
+    background-color: var(--surface-strong) !important;
+  }
+
+  .auth-shell [class~="border-slate-200"],
+  .auth-shell [class~="border-[#FCE7EF]"] {
+    border-color: var(--dashboard-border) !important;
+  }
+
+  .dark .auth-shell {
+    background:
+      radial-gradient(circle at top, rgb(215 107 150 / 0.12), transparent 42%), var(--background);
+  }
+
   /* Keep the existing utility vocabulary while applying the new brand color. */
   .bg-violet-50 {
     background-color: color-mix(in srgb, var(--brand-blush) 68%, white) !important;
