@@ -17,6 +17,20 @@ afterEach(() => {
 })
 
 describe("TaskRow", () => {
+  it("edits the title and moves a task to another priority", () => {
+    const onEdit = vi.fn()
+    render(<TaskRow task={task} onToggle={vi.fn()} onEdit={onEdit} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Chỉnh sửa Ôn chương 3" }))
+    fireEvent.change(screen.getByLabelText("Tên công việc"), {
+      target: { value: "Ôn chương 4" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Khẩn cấp" }))
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }))
+
+    expect(onEdit).toHaveBeenCalledExactlyOnceWith(7, "Ôn chương 4", "Cao")
+  })
+
   it("celebrates a task completion before moving it out of the active list", () => {
     vi.useFakeTimers()
     const onToggle = vi.fn()

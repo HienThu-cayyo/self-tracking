@@ -18,7 +18,7 @@ export function DashboardHero({
   quote,
 }: {
   greeting: string
-  userName: string
+  userName?: string
   quote?: string
 }) {
   return (
@@ -29,7 +29,8 @@ export function DashboardHero({
           HÔM NAY CỦA BẠN
         </p>
         <h1 className="text-[28px] font-bold tracking-tight md:text-3xl">
-          Chào buổi {greeting}, {userName} <span aria-hidden>👋</span>
+          <span>{`Chào buổi ${greeting}${userName ? `, ${userName}` : ""} `}</span>
+          <span aria-hidden>👋</span>
         </h1>
         {quote ? <DailyQuote quote={quote} /> : null}
       </div>

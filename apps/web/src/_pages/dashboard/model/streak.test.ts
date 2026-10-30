@@ -59,6 +59,22 @@ describe("streak calculations", () => {
     ).toBe(1_175)
   })
 
+  it("does not count time when the clock snapshot is briefly behind the start time", () => {
+    const startedAt = 1_000_000
+    expect(
+      getTimerRemainingSeconds(
+        {
+          taskId: null,
+          durationSeconds: 1_500,
+          elapsedSeconds: 0,
+          startedAt,
+          lastAccountedAt: startedAt,
+        },
+        startedAt - 250,
+      ),
+    ).toBe(1_500)
+  })
+
   it.each([
     [-1, "resting"],
     [0, "resting"],

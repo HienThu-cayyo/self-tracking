@@ -143,6 +143,22 @@ export async function POST(request: Request) {
     )[0]
     return NextResponse.json({ task: created }, { status: 201 })
   }
+  if (body.action === "update-task") {
+    const id = String(body.id ?? "")
+    const title = String(body.title ?? "").trim()
+    const priority = String(body.priority ?? "")
+    if (!id || !title) {
+      return NextResponse.json({ message: "Tên công việc là bắt buộc" }, { status: 400 })
+    }
+    if (title.length > 240 || !["Cao", "Vừa", "Thấp"].includes(priority)) {
+      return NextResponse.json({ message: "Thông tin công việc không hợp lệ" }, { status: 400 })
+    }
+    await db
+      .update(tasks)
+      .set({ title, priority, updatedAt: new Date() })
+      .where(and(eq(tasks.id, id), eq(tasks.userId, user.id)))
+    return NextResponse.json({ ok: true })
+  }
   if (body.action === "complete-task" || body.action === "restore-task") {
     const id = String(body.id ?? "")
     await db

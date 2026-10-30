@@ -20,3 +20,11 @@ export function sortTasksByPriority<T extends PrioritizedTask>(tasks: T[]) {
     )
     .map(({ task }) => task)
 }
+
+export function groupTasksByPriority<T extends PrioritizedTask>(tasks: T[]) {
+  return {
+    Cao: tasks.filter((task) => task.priority === "Cao"),
+    Vừa: tasks.filter((task) => task.priority === "Vừa"),
+    Thấp: tasks.filter((task) => task.priority === "Thấp"),
+  }
+}

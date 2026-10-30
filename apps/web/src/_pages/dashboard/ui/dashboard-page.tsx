@@ -38,6 +38,7 @@ import {
   Menu,
   Moon,
   Pause,
+  Pencil,
   Play,
   Plus,
   Route,
@@ -61,7 +62,8 @@ import {
   summaryIcons,
 } from "./dashboard-widgets"
 import { calculateLessonProgress, getRoadmapDeadlineState, parseLessonList } from "../model/roadmap"
-import { sortTasksByPriority } from "../model/tasks"
+import { groupTasksByPriority, sortTasksByPriority } from "../model/tasks"
+import { playTimerCompletionSound, prepareTimerCompletionSound } from "../model/timer-sound"
 import {
   clearGuestSnapshot,
   getGuestImportDismissedKey,
@@ -209,6 +211,18 @@ const priorityStyles = {
   Thấp: "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400",
 }
 
+const priorityColumnStyles = {
+  Cao: "border-rose-200/80 bg-rose-50/45 dark:border-rose-400/20 dark:bg-rose-500/[0.06]",
+  Vừa: "border-[#F5A9C4]/70 bg-[#FCE7EF]/45 dark:border-[#F5A9C4]/20 dark:bg-[#F5A9C4]/[0.06]",
+  Thấp: "border-slate-200 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.025]",
+}
+
+const priorityColumnLabels = {
+  Cao: "Khẩn cấp",
+  Vừa: "Vừa",
+  Thấp: "Thấp",
+}
+
 const initialCourses: Course[] = [
   {
     id: 1,
@@ -340,6 +354,21 @@ export function DashboardPage() {
     if (authStatus === "checking") return
     if (authStatus === "guest") {
       const snapshot = readGuestSnapshot()
+      if (!snapshot?.dirty) {
+        clearGuestSnapshot()
+        window.localStorage.removeItem("self-track-focus-logs")
+        window.localStorage.removeItem("self-track-focus-timer")
+        queueMicrotask(() => {
+          setTasks([])
+          setCompletedTasks([])
+          setCourses([])
+          setSubjects([])
+          setCalendarEvents([])
+          setSummary(EMPTY_DASHBOARD_SUMMARY)
+          setGuestHydrated(true)
+        })
+        return
+      }
       if (snapshot) {
         queueMicrotask(() => {
           setTasks(snapshot.tasks)
@@ -532,7 +561,8 @@ export function DashboardPage() {
   const currentTime = timestamp ? new Date(timestamp) : null
   const dailyQuotes = currentTime ? getDailyQuotes(currentTime) : null
   const focusAnchor = currentTime ?? new Date(2000, 0, 3)
-  const greeting = currentTime ? getGreeting(currentTime) : "sáng"
+  const greeting = authStatus === "guest" ? "sáng" : currentTime ? getGreeting(currentTime) : "sáng"
+  const greetingName = authStatus === "guest" ? undefined : userName
   const dateLabel = currentTime ? formatLiveDate(currentTime) : "Đang cập nhật thời gian…"
 
   useEffect(() => {
@@ -624,6 +654,19 @@ export function DashboardPage() {
       due: "Chưa đặt thời gian",
       priority,
     })
+  }
+
+  function updateTask(id: number | string, title: string, priority: Priority) {
+    const cleanTitle = title.trim()
+    if (!cleanTitle) return
+    setTasks((current) =>
+      current.map((task) => (task.id === id ? { ...task, title: cleanTitle, priority } : task)),
+    )
+    setCompletedTasks((current) =>
+      current.map((task) => (task.id === id ? { ...task, title: cleanTitle, priority } : task)),
+    )
+    markGuestDirty()
+    syncDashboard({ action: "update-task", id, title: cleanTitle, priority })
   }
 
   function addTask() {
@@ -739,6 +782,7 @@ export function DashboardPage() {
       startedAt: now,
       lastAccountedAt: now,
     })
+    prepareTimerCompletionSound()
     markGuestDirty()
   }
 
@@ -966,6 +1010,7 @@ export function DashboardPage() {
               completedTasks={orderedCompletedTasks}
               onRestoreTask={restoreCompletedTask}
               onTrashTask={trashCompletedTask}
+              onEditTask={updateTask}
               focusTimer={focusTimer}
               now={timestamp}
               timerQuote={dailyQuotes?.timer}
@@ -1004,7 +1049,7 @@ export function DashboardPage() {
             <div className="mx-auto max-w-[1380px] px-5 py-8 md:px-10 md:py-10">
               <DashboardHero
                 greeting={greeting}
-                userName={userName}
+                userName={greetingName}
                 quote={dailyQuotes?.greeting}
               />
 
@@ -1447,6 +1492,7 @@ function TaskListView({
   onAddTask,
   onRestoreTask,
   onTrashTask,
+  onEditTask,
   focusTimer,
   now,
   timerQuote,
@@ -1462,6 +1508,7 @@ function TaskListView({
   onAddTask: (title: string, priority: Priority) => void
   onRestoreTask: (id: number | string) => void
   onTrashTask: (id: number | string) => void
+  onEditTask: (id: number | string, title: string, priority: Priority) => void
   focusTimer: PersistedFocusTimer | null
   now: number
   timerQuote?: string
@@ -1475,6 +1522,7 @@ function TaskListView({
   const [newTask, setNewTask] = useState("")
   const [newTaskPriority, setNewTaskPriority] = useState<Priority>("Vừa")
   const remaining = tasks.filter((task) => !task.done).length
+  const tasksByPriority = useMemo(() => groupTasksByPriority(tasks), [tasks])
 
   function submitTask() {
     if (!newTask.trim()) return
@@ -1588,10 +1636,51 @@ function TaskListView({
             </div>
           </form>
         )}
-        <div className="space-y-2">
-          {tasks.map((task) => (
-            <TaskRow key={task.id} task={task} onToggle={handleToggleTask} />
-          ))}
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {(["Cao", "Vừa", "Thấp"] as const).map((priority) => {
+            const columnTasks = tasksByPriority[priority]
+            return (
+              <section
+                key={priority}
+                aria-labelledby={`task-column-${priority}`}
+                className={`min-w-0 rounded-xl border p-3 ${priorityColumnStyles[priority]}`}
+              >
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={`size-2 shrink-0 rounded-full ${priority === "Cao" ? "bg-rose-400" : priority === "Vừa" ? "bg-[#D76B96]" : "bg-slate-400"}`}
+                      aria-hidden="true"
+                    />
+                    <h3
+                      id={`task-column-${priority}`}
+                      className="truncate text-xs font-bold uppercase tracking-[0.12em]"
+                    >
+                      {priorityColumnLabels[priority]}
+                    </h3>
+                  </div>
+                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                    {columnTasks.length}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {columnTasks.length ? (
+                    columnTasks.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        onToggle={handleToggleTask}
+                        onEdit={onEditTask}
+                      />
+                    ))
+                  ) : (
+                    <p className="rounded-lg border border-dashed border-current/15 px-3 py-5 text-center text-xs text-slate-400 dark:text-slate-500">
+                      Không có việc {priority === "Cao" ? "khẩn cấp" : priority.toLowerCase()}
+                    </p>
+                  )}
+                </div>
+              </section>
+            )
+          })}
         </div>
       </section>
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/8 dark:bg-[#171921] md:p-6">
@@ -1672,6 +1761,7 @@ export function FocusTimerPanel({
   useEffect(() => {
     if (isTimerComplete && !wasComplete.current) {
       setShowCelebration(true)
+      playTimerCompletionSound()
       const timeout = setTimeout(() => setShowCelebration(false), 5000)
       wasComplete.current = true
       return () => clearTimeout(timeout)
@@ -3391,11 +3481,16 @@ function CompletedTaskRow({
 export function TaskRow({
   task,
   onToggle,
+  onEdit,
 }: {
   task: Task
   onToggle: (id: number | string) => void
+  onEdit?: (id: number | string, title: string, priority: Priority) => void
 }) {
   const [celebrating, setCelebrating] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(task.title)
+  const [editPriority, setEditPriority] = useState<Priority>(task.priority)
   const completionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(
@@ -3409,6 +3504,68 @@ export function TaskRow({
     setCelebrating(true)
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
     completionTimeout.current = setTimeout(() => onToggle(task.id), reducedMotion ? 160 : 700)
+  }
+
+  function saveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const cleanTitle = editTitle.trim()
+    if (!cleanTitle || !onEdit) return
+    onEdit(task.id, cleanTitle, editPriority)
+    setEditing(false)
+  }
+
+  if (editing && onEdit) {
+    return (
+      <form
+        onSubmit={saveEdit}
+        className="rounded-xl border border-[#F5A9C4]/70 bg-white/80 p-3 shadow-sm dark:border-[#F5A9C4]/25 dark:bg-white/[0.06]"
+      >
+        <label className="sr-only" htmlFor={`edit-task-${task.id}`}>
+          Tên công việc
+        </label>
+        <input
+          id={`edit-task-${task.id}`}
+          autoFocus
+          required
+          value={editTitle}
+          onChange={(event) => setEditTitle(event.target.value)}
+          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#D76B96] dark:border-white/10 dark:bg-[#171921]"
+        />
+        <fieldset className="mt-3">
+          <legend className="mb-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            Di chuyển đến mức độ
+          </legend>
+          <div className="flex flex-wrap gap-1.5">
+            {(["Cao", "Vừa", "Thấp"] as const).map((priority) => (
+              <button
+                key={priority}
+                type="button"
+                aria-pressed={editPriority === priority}
+                onClick={() => setEditPriority(priority)}
+                className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition ${priorityStyles[priority]} ${editPriority === priority ? "ring-2 ring-[#F5A9C4] ring-offset-1 dark:ring-offset-[#171921]" : "opacity-60 hover:opacity-100"}`}
+              >
+                {priority === "Cao" ? "Khẩn cấp" : priority}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
+          >
+            Hủy
+          </button>
+          <button
+            type="submit"
+            className="rounded-lg bg-[#F5A9C4] px-3 py-1.5 text-xs font-semibold text-[#63465A] transition hover:bg-[#D76B96] hover:text-white"
+          >
+            Lưu thay đổi
+          </button>
+        </div>
+      </form>
+    )
   }
 
   return (
@@ -3465,6 +3622,21 @@ export function TaskRow({
       >
         {task.priority}
       </span>
+      {onEdit && !task.done ? (
+        <button
+          type="button"
+          onClick={() => {
+            setEditTitle(task.title)
+            setEditPriority(task.priority)
+            setEditing(true)
+          }}
+          aria-label={`Chỉnh sửa ${task.title}`}
+          title="Chỉnh sửa và di chuyển công việc"
+          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-[#FCE7EF] hover:text-[#7D2945] dark:hover:bg-[#F5A9C4]/10 dark:hover:text-[#F5A9C4]"
+        >
+          <Pencil className="size-3.5" />
+        </button>
+      ) : null}
     </div>
   )
 }

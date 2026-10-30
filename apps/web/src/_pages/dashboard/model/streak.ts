@@ -232,7 +232,7 @@ export function advanceFocusTimer(now = Date.now()) {
 export function getTimerRemainingSeconds(timer: PersistedFocusTimer | null, now = Date.now()) {
   if (!timer) return 0
   const runningSeconds = timer.startedAt
-    ? Math.floor((now - (timer.lastAccountedAt ?? timer.startedAt)) / 1000)
+    ? Math.max(0, Math.floor((now - (timer.lastAccountedAt ?? timer.startedAt)) / 1000))
     : 0
   return Math.max(0, timer.durationSeconds - timer.elapsedSeconds - runningSeconds)
 }

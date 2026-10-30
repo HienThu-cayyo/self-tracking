@@ -1,7 +1,7 @@
 import type { PersistedFocusTimer, DailyFocusLog } from "./streak"
 import type { CalendarEvent } from "./calendar"
 
-export const GUEST_STORAGE_KEY = "self-track-guest-v1"
+export const GUEST_STORAGE_KEY = "self-track-guest-v2"
 
 export type GuestTask = {
   id: string | number

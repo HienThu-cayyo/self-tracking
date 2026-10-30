@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { sortTasksByPriority } from "./tasks"
+import { groupTasksByPriority, sortTasksByPriority } from "./tasks"
 
 describe("task priority ordering", () => {
   it("places urgent tasks first and keeps insertion order within a priority", () => {
@@ -17,5 +17,20 @@ describe("task priority ordering", () => {
       "normal-2",
       "low",
     ])
+  })
+
+  it("groups tasks into priority columns without changing order within a column", () => {
+    const tasks = [
+      { id: "low-1", priority: "Thấp" as const },
+      { id: "high", priority: "Cao" as const },
+      { id: "low-2", priority: "Thấp" as const },
+      { id: "medium", priority: "Vừa" as const },
+    ]
+
+    const grouped = groupTasksByPriority(tasks)
+
+    expect(grouped.Cao.map((task) => task.id)).toEqual(["high"])
+    expect(grouped.Vừa.map((task) => task.id)).toEqual(["medium"])
+    expect(grouped.Thấp.map((task) => task.id)).toEqual(["low-1", "low-2"])
   })
 })
